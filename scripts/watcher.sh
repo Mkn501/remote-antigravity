@@ -129,26 +129,15 @@ while true; do
                         # Create fresh branch from main (already on main)
                         git checkout -b "$ACTIVE_BRANCH" 2>/dev/null || true
                         echo "🌿 Created branch: $ACTIVE_BRANCH (from main)" >&2
+                        # Clear session history for new branch
+                        rm -f "$ACTIVE_PROJECT/.gemini/session_history.txt"
                     fi
                 fi
 
-                # Build conversation history from recent outbox messages
-                HISTORY=""
-                if [ -f "$OUTBOX" ]; then
-                    HISTORY=$(jq -r '
-                        [.messages[] | select(.from == "user")][-5:] |
-                        map("[\(.from)]: \(.text)") |
-                        join("\n---\n")
-                    ' "$OUTBOX" 2>/dev/null || echo "")
-                fi
-
-                HISTORY_SECTION=""
-                if [ -n "$HISTORY" ]; then
-                    HISTORY_SECTION="
-📜 Recent conversation history:
-$HISTORY
----"
-                fi
+                # Append user message to session history file
+                SESSION_HISTORY="$ACTIVE_PROJECT/.gemini/session_history.txt"
+                echo "[$(date +%H:%M)] USER: $USER_MESSAGES" >> "$SESSION_HISTORY"
+                echo "---" >> "$SESSION_HISTORY"
 
                 # --- Workflow command detection ---
                 WORKFLOWS_DIR="$HOME/.gemini/antigravity/global_workflows"
@@ -172,7 +161,9 @@ User specified: $EXTRA_ARGS"
                     TELEGRAM_PROMPT="⚡ Execute this workflow:
 $WORKFLOW_CONTENT
 $ARGS_SECTION
-$HISTORY_SECTION
+---
+Conversation history for this session is in: .gemini/session_history.txt
+Read it first for context on what has been discussed so far.
 ---
 You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
@@ -190,7 +181,9 @@ Rules for the reply file:
                     # Normal message (no workflow)
                     TELEGRAM_PROMPT="📱 Telegram message from the user:
 $USER_MESSAGES
-$HISTORY_SECTION
+---
+Conversation history for this session is in: .gemini/session_history.txt
+Read it first for context on what has been discussed so far.
 ---
 You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
@@ -231,6 +224,10 @@ Rules for the reply file:
                 if [ -z "$TELEGRAM_RESPONSE" ]; then
                     TELEGRAM_RESPONSE=$(echo "$GEMINI_OUTPUT" | tail -c 500)
                 fi
+
+                # Append agent reply to session history
+                echo "[$(date +%H:%M)] AGENT: $TELEGRAM_RESPONSE" >> "$SESSION_HISTORY"
+                echo "---" >> "$SESSION_HISTORY"
 
                 # Commit changes on branch
                 if git rev-parse --git-dir >/dev/null 2>&1; then
