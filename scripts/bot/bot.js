@@ -146,8 +146,52 @@ bot.onText(/^\/help/, async (msg) => {
         '/project <name> — Switch project',
         '/list — List projects',
         '/help — This message',
+        '/model — Switch AI model',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help, { parse_mode: 'Markdown' });
+});
+
+// --- Model Selection ---
+const MODEL_OPTIONS = [
+    { id: 'gemini-2.5-flash', label: '1️⃣ Flash', short: 'Flash' },
+    { id: 'gemini-2.5-pro', label: '2️⃣ Pro', short: 'Pro' },
+    { id: 'gemini-2.0-flash-lite', label: '3️⃣ Flash Lite', short: 'Flash Lite' },
+];
+
+bot.onText(/^\/model$/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const current = state.model || 'default';
+    const currentLabel = MODEL_OPTIONS.find(m => m.id === current)?.short || current;
+
+    await bot.sendMessage(CHAT_ID, `🤖 Current model: *${currentLabel}*\nSelect a model:`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [MODEL_OPTIONS.map(m => ({
+                text: m.id === current ? `✅ ${m.label}` : m.label,
+                callback_data: `model:${m.id}`
+            }))]
+        }
+    });
+});
+
+bot.on('callback_query', async (query) => {
+    if (!query.data?.startsWith('model:')) return;
+    const modelId = query.data.replace('model:', '');
+    const modelInfo = MODEL_OPTIONS.find(m => m.id === modelId);
+    if (!modelInfo) return;
+
+    const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    state.model = modelId;
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+
+    await bot.answerCallbackQuery(query.id, { text: `Switched to ${modelInfo.short}` });
+    await bot.editMessageText(`🤖 Model switched to: *${modelInfo.short}*`, {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id,
+        parse_mode: 'Markdown'
+    });
+    console.log(`🤖 ${new Date().toISOString()} | Model → ${modelId}`);
 });
 
 bot.onText(/^\/sprint/, async (msg) => {
