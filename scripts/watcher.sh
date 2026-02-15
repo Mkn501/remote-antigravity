@@ -72,7 +72,11 @@ while true; do
                 MODEL_FLAG="--model $SELECTED_MODEL"
             fi
 
-            # Mark messages as read BEFORE launching
+            # Extract unread message text BEFORE marking as read
+            # (Since hooks are disabled, we inject messages directly into the prompt)
+            USER_MESSAGES=$(jq -r '[.messages[] | select(.read == false) | .text] | join("\n")' "$INBOX" 2>/dev/null || echo "")
+
+            # Mark messages as read
             jq '.messages[] |= (if .read == false then .read = true else . end)' "$INBOX" > "${INBOX}.tmp" && mv "${INBOX}.tmp" "$INBOX"
 
             echo "📬 $(date +%H:%M:%S) | $UNREAD_COUNT msg(s) → Launching in: $(basename "$ACTIVE_PROJECT")"
@@ -92,17 +96,19 @@ while true; do
                     echo "🌿 Created branch: $BRANCH_NAME (from $ORIGINAL_BRANCH)" >&2
                 fi
 
-                TELEGRAM_PROMPT="You have new messages via Telegram. Read them from context and respond.
+                TELEGRAM_PROMPT="📱 Telegram message from the user:
+$USER_MESSAGES
+
+---
 You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
-After completing your work, write a Telegram-friendly summary of what you did and any key results.
+Execute the user's request above. Then write a Telegram-friendly summary.
 Place this summary between the markers <<<TELEGRAM>>> and <<<END>>>.
 Rules for the Telegram summary:
 - Use plain text with emoji for structure
 - Use bullet points (•) for lists
 - No markdown headers or code blocks
 - Be concise but complete — include all important information
-- If the response needs to be long, that is OK
 - This is the ONLY part that gets sent to the user's phone"
 
                 # Temporarily disable hooks (Gemini CLI bug workaround)
