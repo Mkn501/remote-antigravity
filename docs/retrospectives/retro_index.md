@@ -10,4 +10,5 @@
 
 | Date | File | Tags | Key Lesson |
 |------|------|------|------------|
-| | | | _(No retrospectives yet — create your first using `_RETRO_TEMPLATE.md`)_ |
+| 2026-02-16 | [telegram_bot_security_review](2026-02-16_telegram_bot_security_review.md) | `security`, `telegram`, `gemini-cli` | Auth every handler — callback queries need same CHAT_ID check as messages |
+| 2026-02-15 | [multi-project_hooks_path_issue](2026-02-15_multi-project_hooks_path_issue.md) | `hooks`, `gemini-cli`, `config` | Spaces in paths break Gemini CLI hooks |
