@@ -177,22 +177,35 @@ bot.onText(/^\/model$/, async (msg) => {
 });
 
 bot.on('callback_query', async (query) => {
-    if (!query.data?.startsWith('model:')) return;
-    const modelId = query.data.replace('model:', '');
-    const modelInfo = MODEL_OPTIONS.find(m => m.id === modelId);
-    if (!modelInfo) return;
+    if (query.data?.startsWith('model:')) {
+        const modelId = query.data.replace('model:', '');
+        const modelInfo = MODEL_OPTIONS.find(m => m.id === modelId);
+        if (!modelInfo) return;
 
-    const state = readJsonSafe(STATE_FILE, {});
-    state.model = modelId;
-    atomicWrite(STATE_FILE, state);
+        updateState(s => s.model = modelId);
 
-    await bot.answerCallbackQuery(query.id, { text: `Switched to ${modelInfo.short}` });
-    await bot.editMessageText(`🤖 Model switched to: *${modelInfo.short}*`, {
-        chat_id: query.message.chat.id,
-        message_id: query.message.message_id,
-        parse_mode: 'Markdown'
-    });
-    console.log(`🤖 ${new Date().toISOString()} | Model → ${modelId}`);
+        await bot.answerCallbackQuery(query.id, { text: `Switched to ${modelInfo.short}` });
+        await bot.editMessageText(`🤖 Model switched to: *${modelInfo.short}*`, {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id,
+            parse_mode: 'Markdown'
+        });
+        console.log(`🤖 ${new Date().toISOString()} | Model → ${modelId}`);
+    } else if (query.data?.startsWith('project:')) {
+        const name = query.data.replace('project:', '');
+        const state = getState();
+        if (!state.projects[name]) return;
+
+        updateState(s => s.activeProject = state.projects[name]);
+
+        await bot.answerCallbackQuery(query.id, { text: `Switched to ${name}` });
+        await bot.editMessageText(`📂 Switched to: *${name}*`, {
+            chat_id: query.message.chat.id,
+            message_id: query.message.message_id,
+            parse_mode: 'Markdown'
+        });
+        console.log(`📂 ${new Date().toISOString()} | Project → ${name}`);
+    }
 });
 
 bot.onText(/^\/sprint/, async (msg) => {
@@ -230,13 +243,36 @@ bot.onText(/^\/status/, async (msg) => {
     await bot.sendMessage(CHAT_ID, status, { parse_mode: 'Markdown' });
 });
 
+bot.onText(/^\/project$/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const state = getState();
+    const projects = state.projects || {};
+    const active = state.activeProject;
+
+    const buttons = Object.entries(projects).map(([name, path]) => ({
+        text: path === active ? `✅ ${name}` : name,
+        callback_data: `project:${name}`
+    }));
+
+    // Split into rows of 2
+    const rows = [];
+    for (let i = 0; i < buttons.length; i += 2) {
+        rows.push(buttons.slice(i, i + 2));
+    }
+
+    await bot.sendMessage(CHAT_ID, `📂 Active: *${Object.entries(projects).find(([, p]) => p === active)?.[0] || 'unknown'}*\nSelect a project:`, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: rows }
+    });
+});
+
 bot.onText(/^\/project\s+(.+)/, async (msg, match) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     const name = match[1].trim();
     const state = getState();
 
     if (!state.projects[name]) {
-        await bot.sendMessage(CHAT_ID, `❌ Project "${name}" not found.\nUse /list to see available or /add to register.`);
+        await bot.sendMessage(CHAT_ID, `❌ Project "${name}" not found.\nUse /project to see available or /add to register.`);
         return;
     }
 
