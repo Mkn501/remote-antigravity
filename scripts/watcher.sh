@@ -78,12 +78,18 @@ while true; do
             # (Since hooks are disabled, we inject messages directly into the prompt)
             USER_MESSAGES=$(jq -r '[.messages[] | select(.read == false) | .text] | join("\n")' "$INBOX" 2>/dev/null || echo "")
 
-            # Check for /new command — archive current branch and start fresh
+            # Check for session lifecycle commands
             IS_NEW_SESSION=false
+            IS_SHUTDOWN=false
             if echo "$USER_MESSAGES" | grep -qi "^/new"; then
                 IS_NEW_SESSION=true
-                # Strip the /new command from the message (keep any text after it)
                 USER_MESSAGES=$(echo "$USER_MESSAGES" | sed 's|^/new[[:space:]]*||i')
+            fi
+            if echo "$USER_MESSAGES" | grep -qi "^/startup"; then
+                IS_NEW_SESSION=true  # /startup always starts a fresh branch
+            fi
+            if echo "$USER_MESSAGES" | grep -qi "^/shutdown"; then
+                IS_SHUTDOWN=true  # /shutdown archives branch after running
             fi
 
             # Mark messages as read
@@ -225,7 +231,16 @@ Rules for the Telegram summary:
                     else
                         echo "📭 No changes made" >&2
                     fi
-                    git checkout "$ORIGINAL_BRANCH" 2>/dev/null || true
+
+                    # /shutdown → archive the branch (session complete)
+                    if [ "$IS_SHUTDOWN" = true ]; then
+                        ARCHIVE_NAME="telegram/archive-$(date +%Y%m%d-%H%M%S)"
+                        git checkout main 2>/dev/null || true
+                        git branch -m "$ACTIVE_BRANCH" "$ARCHIVE_NAME" 2>/dev/null || true
+                        echo "📦 Session closed → $ARCHIVE_NAME" >&2
+                    else
+                        git checkout "$ORIGINAL_BRANCH" 2>/dev/null || true
+                    fi
                 fi
 
                 # Pass response to parent shell
