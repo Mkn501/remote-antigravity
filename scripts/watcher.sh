@@ -3,7 +3,9 @@
 # Inbox Watcher — Daemon that triggers Gemini CLI on new messages
 # ============================================================================
 # Features:
-#   - Branch safety: creates telegram/* branches for each session
+#   - Persistent branch: uses telegram/active for conversation continuity
+#   - /new command: archives old branch, starts fresh from main
+#   - Conversation history: includes last 5 exchanges in prompt
 #   - Model selection: reads from state.json
 #   - YOLO mode: auto-approves all tool calls (safe due to branch isolation)
 #   - Hooks workaround: temporarily disables settings.json to prevent
@@ -76,6 +78,14 @@ while true; do
             # (Since hooks are disabled, we inject messages directly into the prompt)
             USER_MESSAGES=$(jq -r '[.messages[] | select(.read == false) | .text] | join("\n")' "$INBOX" 2>/dev/null || echo "")
 
+            # Check for /new command — archive current branch and start fresh
+            IS_NEW_SESSION=false
+            if echo "$USER_MESSAGES" | grep -qi "^/new"; then
+                IS_NEW_SESSION=true
+                # Strip the /new command from the message (keep any text after it)
+                USER_MESSAGES=$(echo "$USER_MESSAGES" | sed 's|^/new[[:space:]]*||i')
+            fi
+
             # Mark messages as read
             jq '.messages[] |= (if .read == false then .read = true else . end)' "$INBOX" > "${INBOX}.tmp" && mv "${INBOX}.tmp" "$INBOX"
 
@@ -86,19 +96,53 @@ while true; do
                 cd "$ACTIVE_PROJECT"
                 export HOOK_BRIDGE_DIR="$CENTRAL_PROJECT_DIR"
 
-                # Branch safety
-                BRANCH_NAME=""
-                ORIGINAL_BRANCH="main"
+                ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+                ACTIVE_BRANCH="telegram/active"
+
                 if git rev-parse --git-dir >/dev/null 2>&1; then
-                    BRANCH_NAME="telegram/$(date +%Y%m%d-%H%M%S)"
-                    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-                    git checkout -b "$BRANCH_NAME" 2>/dev/null || true
-                    echo "🌿 Created branch: $BRANCH_NAME (from $ORIGINAL_BRANCH)" >&2
+                    BRANCH_EXISTS=$(git branch --list "$ACTIVE_BRANCH" 2>/dev/null | wc -l | tr -d ' ')
+
+                    if [ "$IS_NEW_SESSION" = true ] && [ "$BRANCH_EXISTS" -gt 0 ]; then
+                        # Archive the old branch with timestamp
+                        ARCHIVE_NAME="telegram/archive-$(date +%Y%m%d-%H%M%S)"
+                        git branch -m "$ACTIVE_BRANCH" "$ARCHIVE_NAME" 2>/dev/null || true
+                        echo "📦 Archived branch → $ARCHIVE_NAME" >&2
+                        BRANCH_EXISTS=0
+                    fi
+
+                    if [ "$BRANCH_EXISTS" -gt 0 ]; then
+                        # Continue on existing branch
+                        git checkout "$ACTIVE_BRANCH" 2>/dev/null || true
+                        echo "🔄 Continuing on branch: $ACTIVE_BRANCH" >&2
+                    else
+                        # Create new branch from main
+                        git checkout main 2>/dev/null || true
+                        git checkout -b "$ACTIVE_BRANCH" 2>/dev/null || true
+                        echo "🌿 Created branch: $ACTIVE_BRANCH (from main)" >&2
+                    fi
+                fi
+
+                # Build conversation history from recent outbox messages
+                HISTORY=""
+                if [ -f "$OUTBOX" ]; then
+                    HISTORY=$(jq -r '
+                        [.messages[-5:][]] |
+                        map("[\(.from)]: \(.text)") |
+                        join("\n---\n")
+                    ' "$OUTBOX" 2>/dev/null || echo "")
+                fi
+
+                HISTORY_SECTION=""
+                if [ -n "$HISTORY" ]; then
+                    HISTORY_SECTION="
+📜 Recent conversation history:
+$HISTORY
+---"
                 fi
 
                 TELEGRAM_PROMPT="📱 Telegram message from the user:
 $USER_MESSAGES
-
+$HISTORY_SECTION
 ---
 You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
@@ -136,13 +180,13 @@ Rules for the Telegram summary:
                 fi
 
                 # Commit changes on branch
-                if [ -n "$BRANCH_NAME" ] && git rev-parse --git-dir >/dev/null 2>&1; then
+                if git rev-parse --git-dir >/dev/null 2>&1; then
                     if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
                         git add -A 2>/dev/null
                         git commit -m "telegram: session $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
-                        echo "💾 Changes committed on branch: $BRANCH_NAME" >&2
+                        echo "💾 Changes committed on: $ACTIVE_BRANCH" >&2
                     else
-                        echo "📭 No changes made on branch: $BRANCH_NAME" >&2
+                        echo "📭 No changes made" >&2
                     fi
                     git checkout "$ORIGINAL_BRANCH" 2>/dev/null || true
                 fi
