@@ -136,7 +136,7 @@ while true; do
                 HISTORY=""
                 if [ -f "$OUTBOX" ]; then
                     HISTORY=$(jq -r '
-                        [.messages[-5:][]] |
+                        [.messages[] | select(.from == "user")][-5:] |
                         map("[\(.from)]: \(.text)") |
                         join("\n---\n")
                     ' "$OUTBOX" 2>/dev/null || echo "")
