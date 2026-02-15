@@ -60,6 +60,47 @@ After building and stabilizing the Telegram bot relay system (`bot.js` + `watche
 
 ---
 
+## Comparison: OpenClaw.ai vs. This Setup
+
+OpenClaw.ai has been heavily criticized by Sophos, Trend Micro, CrowdStrike, Kaspersky, and others for being a cybersecurity risk. This section maps their attack vectors against our setup.
+
+### OpenClaw's "Lethal Trifecta" (per CrowdStrike)
+1. **Deep system access** (files, shell, root)
+2. **External communication** (can phone home)
+3. **Processes untrusted content** (emails, websites, docs)
+
+| Attack Vector | OpenClaw Risk | Our Setup | Why |
+|---------------|--------------|-----------|-----|
+| **Public exposure** | 1000s of instances publicly reachable on the internet | ❌ Not reachable | No server, no ports. Runs locally, no HTTP endpoint. Telegram bot polls — never listens. |
+| **Remote Code Execution** | CVE-2026-25253 — one-click RCE via crafted URLs | ❌ Not applicable | No web server, no URL handler. Attack surface doesn't exist. |
+| **Malicious plugins** | ClawHub marketplace distributes malicious "skills" that exfiltrate data | ❌ No marketplace | No plugin ecosystem. Gemini CLI uses only built-in tools + local MCP servers we control. |
+| **Prompt injection** | Emails/websites embed instructions that hijack the agent | ⚠️ Partial risk | Agent only reads local project files + our prompts. Doesn't process emails or external URLs. Risk limited to tampered project files. |
+| **Auth bypass** | Brute-force, default credentials, exposed APIs | ❌ Not applicable | No auth system to bypass. Single hardcoded CHAT_ID. Telegram handles auth. |
+| **Data exfiltration** | Agent sends private data to external servers | ⚠️ `--yolo` risk | Gemini runs unrestricted and could theoretically make network calls. Mitigated by single-user scope. |
+| **Credential storage** | Plaintext secrets in config files | ⚠️ `.env` on disk | `.env` has bot token in plaintext. Not in git, but readable on disk. Standard for local dev. |
+
+### Key Architectural Differences
+
+| Property | OpenClaw | Our Setup |
+|----------|---------|-----------|
+| **Network exposure** | HTTP server, publicly accessible | No server. Telegram polls, watcher polls local files. |
+| **Multi-user** | Yes — shared instances | No — single CHAT_ID, single machine |
+| **Plugin ecosystem** | ClawHub (untrusted third-party code) | None — only built-in Gemini tools + local MCP |
+| **Input sources** | Emails, web, documents, APIs | Only Telegram messages from verified CHAT_ID |
+| **Persistence** | Always-on server with credentials | Ephemeral `gemini -p` calls, stateless between messages |
+| **Attack surface** | Web server + API + plugins + auth | Telegram API (managed by Telegram) + local file I/O |
+
+### Bottom Line
+
+Our setup avoids OpenClaw's three biggest problems:
+1. **No network exposure** — nothing to scan, no ports, no URLs
+2. **No plugin marketplace** — no supply chain attack vector
+3. **No multi-user auth** — no credentials to brute-force
+
+The shared risk is `--yolo` granting unrestricted agent access, but our attack surface is limited to Telegram CHAT_ID compromise (requires physical device access or Telegram session theft).
+
+---
+
 ## Action Items
 
 - [ ] Add CHAT_ID check to `callback_query` handler in `bot.js`
