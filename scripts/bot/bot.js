@@ -155,7 +155,7 @@ bot.onText(/^\/help/, async (msg) => {
 const MODEL_OPTIONS = [
     { id: 'gemini-2.5-flash', label: '1️⃣ Flash', short: 'Flash' },
     { id: 'gemini-2.5-pro', label: '2️⃣ Pro', short: 'Pro' },
-    { id: 'gemini-2.5-pro-preview-05-06', label: '3️⃣ Pro Preview', short: 'Pro Preview' },
+    { id: 'gemini-3-pro-preview', label: '3️⃣ Pro 3.0 Preview', short: 'Pro 3.0 Preview' },
     { id: 'gemini-2.0-flash-lite', label: '4️⃣ Flash Lite', short: 'Flash Lite' },
 ];
 
