@@ -208,8 +208,9 @@ bot.onText(/^\/list/, async (msg) => {
 
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', (msg) => {
-    // Skip commands
-    if (msg.text && msg.text.startsWith('/')) return;
+    // Skip bot-native commands (handled by their own handlers above)
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add'];
+    if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
