@@ -125,6 +125,31 @@ console.log('');
 
 // --- Commands ---
 
+bot.onText(/^\/help/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const help = [
+        '🤖 *Antigravity Bot Commands*',
+        '',
+        '⚡ *Workflow Commands* (→ Gemini CLI):',
+        '/startup — Load project context, fresh branch',
+        '/shutdown — Save state, close session branch',
+        '/plan\_feature — Plan a new feature',
+        '/implement\_task — Implement an assigned task',
+        '/pr\_check — Check and merge PRs',
+        '/update\_roadmap — Update roadmap docs',
+        '/new — Archive branch, start fresh',
+        '',
+        '🔧 *Bot Commands* (instant):',
+        '/status — System status',
+        '/stop — Halt agent',
+        '/sprint — Sprint mode',
+        '/project <name> — Switch project',
+        '/list — List projects',
+        '/help — This message',
+    ].join('\n');
+    await bot.sendMessage(CHAT_ID, help, { parse_mode: 'Markdown' });
+});
+
 bot.onText(/^\/sprint/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     writeToInbox('🏃 Sprint Mode activated. Check your task list and process the highest priority task.');
@@ -209,7 +234,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
