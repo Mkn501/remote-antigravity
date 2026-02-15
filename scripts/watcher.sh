@@ -140,7 +140,43 @@ $HISTORY
 ---"
                 fi
 
-                TELEGRAM_PROMPT="📱 Telegram message from the user:
+                # --- Workflow command detection ---
+                WORKFLOWS_DIR="$HOME/.gemini/antigravity/global_workflows"
+                WORKFLOW_CMD=$(echo "$USER_MESSAGES" | head -1 | grep -oE '^/[a-z_-]+' | sed 's|^/||')
+                WORKFLOW_FILE="$WORKFLOWS_DIR/${WORKFLOW_CMD}.md"
+                WORKFLOW_CONTENT=""
+
+                if [ -n "$WORKFLOW_CMD" ] && [ "$WORKFLOW_CMD" != "new" ] && [ -f "$WORKFLOW_FILE" ]; then
+                    # Strip YAML frontmatter (--- ... ---) and read workflow
+                    WORKFLOW_CONTENT=$(awk 'BEGIN{skip=0} /^---$/{skip++; next} skip<2{next} {print}' "$WORKFLOW_FILE")
+                    # Extract extra args after the command (e.g., "/startup quick" → "quick")
+                    EXTRA_ARGS=$(echo "$USER_MESSAGES" | head -1 | sed "s|^/${WORKFLOW_CMD}[[:space:]]*||")
+                    echo "⚡ Workflow detected: /$WORKFLOW_CMD" >&2
+
+                    ARGS_SECTION=""
+                    if [ -n "$EXTRA_ARGS" ]; then
+                        ARGS_SECTION="
+User specified: $EXTRA_ARGS"
+                    fi
+
+                    TELEGRAM_PROMPT="⚡ Execute this workflow:
+$WORKFLOW_CONTENT
+$ARGS_SECTION
+$HISTORY_SECTION
+---
+You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
+Do NOT say tools are unavailable — they ARE available. Use them directly.
+Execute the workflow above step by step. Then write a Telegram-friendly summary.
+Place this summary between the markers <<<TELEGRAM>>> and <<<END>>>.
+Rules for the Telegram summary:
+- Use plain text with emoji for structure
+- Use bullet points (•) for lists
+- No markdown headers or code blocks
+- Be concise but complete — include all important information
+- This is the ONLY part that gets sent to the user's phone"
+                else
+                    # Normal message (no workflow)
+                    TELEGRAM_PROMPT="📱 Telegram message from the user:
 $USER_MESSAGES
 $HISTORY_SECTION
 ---
@@ -154,6 +190,7 @@ Rules for the Telegram summary:
 - No markdown headers or code blocks
 - Be concise but complete — include all important information
 - This is the ONLY part that gets sent to the user's phone"
+                fi
 
                 # Temporarily disable hooks (Gemini CLI bug workaround)
                 TARGET_SETTINGS="$ACTIVE_PROJECT/.gemini/settings.json"
