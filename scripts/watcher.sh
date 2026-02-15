@@ -109,10 +109,10 @@ while true; do
                     BRANCH_EXISTS=$(git branch --list "$ACTIVE_BRANCH" 2>/dev/null | wc -l | tr -d ' ')
 
                     if [ "$IS_NEW_SESSION" = true ] && [ "$BRANCH_EXISTS" -gt 0 ]; then
-                        # Archive the old branch with timestamp
-                        ARCHIVE_NAME="telegram/archive-$(date +%Y%m%d-%H%M%S)"
-                        git branch -m "$ACTIVE_BRANCH" "$ARCHIVE_NAME" 2>/dev/null || true
-                        echo "📦 Archived branch → $ARCHIVE_NAME" >&2
+                        # Preserve old session branch with timestamp
+                        SESSION_NAME="telegram/session-$(date +%Y%m%d-%H%M%S)"
+                        git branch -m "$ACTIVE_BRANCH" "$SESSION_NAME" 2>/dev/null || true
+                        echo "📌 Saved previous session → $SESSION_NAME" >&2
                         BRANCH_EXISTS=0
                     fi
 
