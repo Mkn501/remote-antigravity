@@ -8,6 +8,10 @@ node_modules/
 .gemini/wa_inbox.json
 .gemini/wa_outbox.json
 .gemini/after_agent_debug.json
+.gemini/state.json
+*.log
+
+# Temp files from atomic writes
 
 # Temp files from atomic writes
 *.tmp

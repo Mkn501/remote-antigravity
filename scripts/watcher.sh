@@ -2,30 +2,29 @@
 # ============================================================================
 # Inbox Watcher — Daemon that triggers Gemini CLI on new messages
 # ============================================================================
-# Polls wa_inbox.json for unread messages. When found, starts a Gemini CLI
-# session in headless mode (-p) to process them. The hooks handle the rest:
-#   - BeforeAgent injects inbox messages
-#   - AfterAgent checks for new messages and re-prompts (Sprint loop)
+# Polls wa_inbox.json for unread messages. When found, reads the active project
+# from state.json and launches a Gemini CLI session in that directory.
 #
-# Usage:
-#   ./scripts/watcher.sh          # Run in foreground
-#   nohup ./scripts/watcher.sh &  # Run as daemon
-#
-# Requires: gemini CLI in PATH, jq
+# Sets HOOK_BRIDGE_DIR env var so hooks (running in target project) can find
+# the central inbox/outbox in this project.
 # ============================================================================
 
 set -euo pipefail
 
-PROJECT_DIR="${GEMINI_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-INBOX="$PROJECT_DIR/.gemini/wa_inbox.json"
-POLL_INTERVAL=3  # seconds
-COOLDOWN=10      # seconds after a session ends before checking again
-LOCK_FILE="$PROJECT_DIR/.gemini/wa_session.lock"
+# Central directory (where this script lives' parent)
+CENTRAL_PROJECT_DIR="${GEMINI_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+DOT_GEMINI="$CENTRAL_PROJECT_DIR/.gemini"
+INBOX="$DOT_GEMINI/wa_inbox.json"
+STATE_FILE="$DOT_GEMINI/state.json"
+LOCK_FILE="$DOT_GEMINI/wa_session.lock"
+
+POLL_INTERVAL=3
+COOLDOWN=10
 
 echo "👁️  Inbox watcher started"
-echo "   📂 Project: $PROJECT_DIR"
-echo "   📥 Inbox:   $INBOX"
-echo "   ⏱️  Poll:    ${POLL_INTERVAL}s"
+echo "   HQ:      $CENTRAL_PROJECT_DIR"
+echo "   Inbox:   $INBOX"
+echo "   State:   $STATE_FILE"
 echo ""
 
 cleanup() {
@@ -41,20 +40,28 @@ while true; do
         UNREAD_COUNT=$(jq '[.messages[]? | select(.read == false)] | length' "$INBOX" 2>/dev/null || echo "0")
 
         if [ "$UNREAD_COUNT" -gt 0 ] && [ ! -f "$LOCK_FILE" ]; then
-            echo "📬 $(date -u +%H:%M:%S) | $UNREAD_COUNT unread message(s) — starting Gemini session..."
+            # Read active project from state.json
+            ACTIVE_PROJECT=$(jq -r '.activeProject // empty' "$STATE_FILE" 2>/dev/null || echo "$CENTRAL_PROJECT_DIR")
+            
+            if [ -z "$ACTIVE_PROJECT" ] || [ ! -d "$ACTIVE_PROJECT" ]; then
+                echo "⚠️  Active project not found: '$ACTIVE_PROJECT'. Falling back to HQ."
+                ACTIVE_PROJECT="$CENTRAL_PROJECT_DIR"
+            fi
 
-            # Create lock to prevent concurrent sessions
+            echo "📬 $(date -u +%H:%M:%S) | $UNREAD_COUNT msg(s) → Launching in: $(basename "$ACTIVE_PROJECT")"
+
+            # Create lock
             echo "$$" > "$LOCK_FILE"
 
-            # Run Gemini CLI in headless mode
-            # The BeforeAgent hook will inject the inbox messages
-            # The AfterAgent hook will continue looping if new messages arrive
+            # Launch Gemini in target project
+            # HOOK_BRIDGE_DIR points back to HQ so hooks can find inbox
             (
-                cd "$PROJECT_DIR"
-                gemini -p "You have new messages from the user via Telegram. Read them from your BeforeAgent hook context and respond helpfully. Keep responses concise." 2>>"$PROJECT_DIR/.gemini/wa_session.log"
+                cd "$ACTIVE_PROJECT"
+                export HOOK_BRIDGE_DIR="$CENTRAL_PROJECT_DIR"
+                gemini -p "You have new messages via Telegram. Read them from context and respond." 2>>"$DOT_GEMINI/wa_session.log"
             ) || true
 
-            # Session ended — remove lock
+            # Session ended
             rm -f "$LOCK_FILE"
             echo "✅ $(date -u +%H:%M:%S) | Session complete — cooling down ${COOLDOWN}s"
             sleep "$COOLDOWN"

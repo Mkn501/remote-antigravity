@@ -15,7 +15,10 @@
 
 set -euo pipefail
 
-HOOK_DIR="${GEMINI_PROJECT_DIR:-.}/.gemini"
+# If HOOK_BRIDGE_DIR is set (by watcher), use it to find the central inbox.
+# Otherwise fall back to GEMINI_PROJECT_DIR or current directory.
+BASE_DIR="${HOOK_BRIDGE_DIR:-${GEMINI_PROJECT_DIR:-.}}"
+HOOK_DIR="$BASE_DIR/.gemini"
 INBOX="$HOOK_DIR/wa_inbox.json"
 
 echo "[wa-bridge] BeforeAgent hook fired" >&2

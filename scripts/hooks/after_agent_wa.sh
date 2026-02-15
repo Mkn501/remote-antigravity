@@ -20,7 +20,9 @@
 
 set -euo pipefail
 
-HOOK_DIR="${GEMINI_PROJECT_DIR:-.}/.gemini"
+# If HOOK_BRIDGE_DIR is set (by watcher), use it to find the central inbox/outbox.
+BASE_DIR="${HOOK_BRIDGE_DIR:-${GEMINI_PROJECT_DIR:-.}}"
+HOOK_DIR="$BASE_DIR/.gemini"
 DEBUG_FILE="$HOOK_DIR/after_agent_debug.json"
 OUTBOX="$HOOK_DIR/wa_outbox.json"
 INBOX="$HOOK_DIR/wa_inbox.json"

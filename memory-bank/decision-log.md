@@ -16,3 +16,9 @@
 - **Decision**: Use JSON files (`wa_inbox.json`, `wa_outbox.json`) as the message queue.
 - **Rationale**: Hooks can only read stdin/write stdout. File-based protocol is debuggable, simple, and works with any hook language (bash, node, python).
 - **Consequences**: Need file watching in the bot; potential race conditions (mitigated by atomic writes).
+
+## 004: Wrapper Scripts for Hooks
+- **Context**: Paths with spaces (e.g. `Google Drive`) break Gemini hook execution.
+- **Decision**: Generate wrapper scripts in `~/.gemini/wa_bridge_wrappers/` for all hooks.
+- **Rationale**: Isolates the hook runner from space-containing paths. Standardizes execution environment without relying on symlinks (which are resolved eagerly).
+- **Consequences**: `setup_project.sh` must check/create `~/.gemini` directory structure. Hooks are indirect.

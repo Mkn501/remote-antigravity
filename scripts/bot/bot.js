@@ -5,9 +5,12 @@
 // files (wa_inbox.json / wa_outbox.json).
 //
 // Commands:
-//   /sprint  — Start Sprint Mode (sends initial sprint prompt)
-//   /stop    — Send STOP signal to halt Sprint Mode
-//   /status  — Check bot and file status
+//   /sprint        — Start Sprint Mode
+//   /stop          — Send STOP signal
+//   /status        — Check status
+//   /project <name> — Switch active project
+//   /add <name> <path> — Register a new project
+//   /list          — List available projects
 //
 // Usage:
 //   1. Copy .env.example to .env and fill in values
@@ -18,20 +21,40 @@
 import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
 import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { resolve, dirname, isAbsolute } from 'path';
+import { fileURLToPath } from 'url';
 
 // --- Config ---
+// Resolve paths relative to this script file (scripts/bot/bot.js)
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+// Project root is two levels up from scripts/bot/
+const PROJECT_ROOT = resolve(SCRIPT_DIR, '..', '..');
+
+// Load .env from script dir
+import dotenv from 'dotenv';
+dotenv.config({ path: resolve(SCRIPT_DIR, '.env') });
+
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const PROJECT_DIR = process.env.GEMINI_PROJECT_DIR || '.';
-const INBOX = resolve(PROJECT_DIR, '.gemini/wa_inbox.json');
-const OUTBOX = resolve(PROJECT_DIR, '.gemini/wa_outbox.json');
+const DEFAULT_PROJECT_DIR = process.env.GEMINI_PROJECT_DIR || PROJECT_ROOT;
+
+// Central storage (in remote antigravity)
+const CENTRAL_DIR = resolve(DEFAULT_PROJECT_DIR, '.gemini');
+const INBOX = resolve(CENTRAL_DIR, 'wa_inbox.json');
+const OUTBOX = resolve(CENTRAL_DIR, 'wa_outbox.json');
+const STATE_FILE = resolve(CENTRAL_DIR, 'state.json');
+
 const POLL_INTERVAL_MS = 2000;
 const MAX_MSG_LEN = 4096;
 
 if (!TOKEN || !CHAT_ID) {
     console.error('❌ Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in .env');
     process.exit(1);
+}
+
+// Ensure central dir exists
+if (!existsSync(CENTRAL_DIR)) {
+    mkdirSync(CENTRAL_DIR, { recursive: true });
 }
 
 // --- Helpers ---
@@ -68,12 +91,35 @@ function writeToInbox(text) {
     return entry;
 }
 
+// Initialize State
+if (!existsSync(STATE_FILE)) {
+    const initialState = {
+        activeProject: DEFAULT_PROJECT_DIR,
+        projects: {
+            "main": DEFAULT_PROJECT_DIR
+        }
+    };
+    atomicWrite(STATE_FILE, initialState);
+}
+
+function getState() {
+    return readJsonSafe(STATE_FILE, { activeProject: DEFAULT_PROJECT_DIR, projects: { "main": DEFAULT_PROJECT_DIR } });
+}
+
+function updateState(updater) {
+    const state = getState();
+    updater(state);
+    atomicWrite(STATE_FILE, state);
+    return state;
+}
+
 // --- Bot Init ---
 const bot = new TelegramBot(TOKEN, { polling: true });
 console.log('🤖 wa-bridge bot started');
-console.log(`   📂 Project: ${PROJECT_DIR}`);
+console.log(`   📂 Default Project: ${DEFAULT_PROJECT_DIR}`);
 console.log(`   📥 Inbox:   ${INBOX}`);
 console.log(`   📤 Outbox:  ${OUTBOX}`);
+console.log(`   💾 State:   ${STATE_FILE}`);
 console.log(`   💬 Chat ID: ${CHAT_ID}`);
 console.log('');
 
@@ -81,7 +127,7 @@ console.log('');
 
 bot.onText(/^\/sprint/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
-    writeToInbox('🏃 Sprint Mode activated. Check your task list and process the highest priority task. After completing it, report your status.');
+    writeToInbox('🏃 Sprint Mode activated. Check your task list and process the highest priority task.');
     await bot.sendMessage(CHAT_ID, '🟢 Sprint Mode activated.\nSend messages anytime — they\'ll be picked up between turns.\nSend /stop to halt.');
     console.log(`🏃 ${new Date().toISOString()} | Sprint Mode activated`);
 });
@@ -89,7 +135,7 @@ bot.onText(/^\/sprint/, async (msg) => {
 bot.onText(/^\/stop/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     writeToInbox('STOP');
-    await bot.sendMessage(CHAT_ID, '🔴 STOP signal sent.\nAgent will halt after completing its current action.');
+    await bot.sendMessage(CHAT_ID, '🔴 STOP signal sent.\nAgent will halt after completing current action.');
     console.log(`🛑 ${new Date().toISOString()} | STOP signal sent`);
 });
 
@@ -99,10 +145,12 @@ bot.onText(/^\/status/, async (msg) => {
     const outboxData = readJsonSafe(OUTBOX, { messages: [] });
     const unread = inboxData.messages.filter(m => !m.read).length;
     const unsent = outboxData.messages.filter(m => !m.sent).length;
-    const stopFlag = existsSync(resolve(PROJECT_DIR, '.gemini/wa_stop_signal'));
+    const stopFlag = existsSync(resolve(CENTRAL_DIR, 'wa_stop_signal'));
+    const state = getState();
 
     const status = [
         '📊 **Bridge Status**',
+        `📂 Active Project: \`${state.activeProject}\``,
         `📥 Inbox: ${inboxData.messages.length} total, ${unread} unread`,
         `📤 Outbox: ${outboxData.messages.length} total, ${unsent} unsent`,
         `${stopFlag ? '🔴' : '🟢'} Stop signal: ${stopFlag ? 'ACTIVE' : 'clear'}`,
@@ -112,28 +160,68 @@ bot.onText(/^\/status/, async (msg) => {
     await bot.sendMessage(CHAT_ID, status, { parse_mode: 'Markdown' });
 });
 
+bot.onText(/^\/project\s+(.+)/, async (msg, match) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const name = match[1].trim();
+    const state = getState();
+
+    if (!state.projects[name]) {
+        await bot.sendMessage(CHAT_ID, `❌ Project "${name}" not found.\nUse /list to see available or /add to register.`);
+        return;
+    }
+
+    updateState(s => s.activeProject = state.projects[name]);
+    await bot.sendMessage(CHAT_ID, `✅ Switched to project: **${name}**\n\`${state.projects[name]}\``, { parse_mode: 'Markdown' });
+    console.log(`📂 Switched to project: ${name} (${state.projects[name]})`);
+});
+
+bot.onText(/^\/add\s+(\S+)\s+(.+)/, async (msg, match) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const name = match[1].trim();
+    let path = match[2].trim();
+
+    // Resolve path relative to default project if not absolute
+    if (!isAbsolute(path)) {
+        path = resolve(DEFAULT_PROJECT_DIR, path);
+    }
+
+    if (!existsSync(path)) {
+        await bot.sendMessage(CHAT_ID, `❌ Directory not found:\n\`${path}\``, { parse_mode: 'Markdown' });
+        return;
+    }
+
+    updateState(s => s.projects[name] = path);
+    await bot.sendMessage(CHAT_ID, `✅ Added project: **${name}**\n\`${path}\``, { parse_mode: 'Markdown' });
+    console.log(`➕ Added project: ${name} -> ${path}`);
+});
+
+bot.onText(/^\/list/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const state = getState();
+    const list = Object.entries(state.projects)
+        .map(([name, path]) => `- **${name}**: \`${path}\` ${state.activeProject === path ? '(ACTIVE)' : ''}`)
+        .join('\n');
+
+    await bot.sendMessage(CHAT_ID, `📂 **Available Projects**:\n${list}`, { parse_mode: 'Markdown' });
+});
+
+
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', (msg) => {
-    // Skip commands (handled above)
+    // Skip commands
     if (msg.text && msg.text.startsWith('/')) return;
 
-    // Auth: only accept from configured chat
-    if (String(msg.chat.id) !== String(CHAT_ID)) {
-        console.log(`⚠️  Ignored message from unauthorized chat: ${msg.chat.id}`);
-        return;
-    }
+    // Auth
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
 
-    if (!msg.text) {
-        console.log('⚠️  Ignored non-text message');
-        return;
-    }
+    if (!msg.text) return;
 
     writeToInbox(msg.text);
     const preview = msg.text.length > 80 ? msg.text.substring(0, 77) + '...' : msg.text;
     console.log(`📥 ${new Date().toISOString()} | ${preview}`);
 });
 
-// --- Outbound: wa_outbox.json → Telegram (polling) ---
+// --- Outbound: wa_outbox.json → Telegram ---
 setInterval(async () => {
     if (!existsSync(OUTBOX)) return;
 

@@ -20,6 +20,7 @@ graph LR
 | P-001 | **Message File Protocol** | JSON files as the message queue between bot and CLI hooks |
 | P-002 | **Hook-Bridged I/O** | BeforeAgent for inbound injection, AfterAgent for outbound extraction |
 | P-003 | **Shared Filesystem Sync** | CLI and IDE share memory-bank/ and tasks — no direct session link needed |
+| P-004 | **Wrapper Script Hook** | Use `exec` wrappers to launch hooks in paths with spaces (Gemini CLI workaround) |
 
 ## Key Decisions
 - **No OpenClaw**: Direct Gemini CLI hooks + lightweight bot, no gateway layer
