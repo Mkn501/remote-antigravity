@@ -20,3 +20,4 @@ node_modules/
 .DS_Store
 telegram_summary.md
 telegram_reply.txt
+session_history.txt
