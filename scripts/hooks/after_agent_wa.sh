@@ -39,8 +39,9 @@ RESPONSE=$(echo "$INPUT" | jq -r '
   | if type == "object" or type == "array" then tostring else . end
 ' 2>/dev/null) || RESPONSE="⚠️ jq extraction failed"
 
-# Truncate to 500 chars for messaging readability
-SUMMARY=$(echo "$RESPONSE" | head -c 500)
+# Take the LAST 1500 chars — prompt_response contains all model output
+# (thinking traces + tool calls + final answer). The actual response is at the end.
+SUMMARY=$(echo "$RESPONSE" | tail -c 1500)
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 MSG_ID="resp_$(date +%s)"
 
