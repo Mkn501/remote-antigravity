@@ -117,12 +117,12 @@ while true; do
                     fi
 
                     if [ "$BRANCH_EXISTS" -gt 0 ]; then
-                        # Continue on existing branch
-                        git checkout "$ACTIVE_BRANCH" 2>/dev/null || true
+                        # Continue on existing branch — force to avoid dirty state blocking
+                        git checkout -f "$ACTIVE_BRANCH" 2>/dev/null || true
                         echo "🔄 Continuing on branch: $ACTIVE_BRANCH" >&2
                     else
                         # Create new branch from main
-                        git checkout main 2>/dev/null || true
+                        git checkout -f main 2>/dev/null || true
                         git checkout -b "$ACTIVE_BRANCH" 2>/dev/null || true
                         echo "🌿 Created branch: $ACTIVE_BRANCH (from main)" >&2
                     fi
@@ -235,7 +235,7 @@ Rules for the Telegram summary:
                     # /shutdown → switch to main, keep branch for review/merge
                     # Otherwise: STAY on telegram/active for next session
                     if [ "$IS_SHUTDOWN" = true ]; then
-                        git checkout main 2>/dev/null || true
+                        git checkout -f main 2>/dev/null || true
                         echo "🏁 Session closed — branch '$ACTIVE_BRANCH' ready for review" >&2
                     fi
                 fi
