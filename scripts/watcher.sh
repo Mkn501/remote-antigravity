@@ -106,6 +106,9 @@ while true; do
                 ACTIVE_BRANCH="telegram/active"
 
                 if git rev-parse --git-dir >/dev/null 2>&1; then
+                    # Always start from main for branch operations
+                    git checkout -f main 2>/dev/null || true
+
                     BRANCH_EXISTS=$(git branch --list "$ACTIVE_BRANCH" 2>/dev/null | wc -l | tr -d ' ')
 
                     if [ "$IS_NEW_SESSION" = true ] && [ "$BRANCH_EXISTS" -gt 0 ]; then
@@ -117,12 +120,13 @@ while true; do
                     fi
 
                     if [ "$BRANCH_EXISTS" -gt 0 ]; then
-                        # Continue on existing branch — force to avoid dirty state blocking
+                        # Continue on existing branch
                         git checkout -f "$ACTIVE_BRANCH" 2>/dev/null || true
                         echo "🔄 Continuing on branch: $ACTIVE_BRANCH" >&2
                     else
-                        # Create new branch from main
-                        git checkout -f main 2>/dev/null || true
+                        # Delete any remnant of old branch (in case rename failed)
+                        git branch -D "$ACTIVE_BRANCH" 2>/dev/null || true
+                        # Create fresh branch from main (already on main)
                         git checkout -b "$ACTIVE_BRANCH" 2>/dev/null || true
                         echo "🌿 Created branch: $ACTIVE_BRANCH (from main)" >&2
                     fi
