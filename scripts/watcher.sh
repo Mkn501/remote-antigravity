@@ -136,8 +136,8 @@ while true; do
                 HISTORY=""
                 if [ -f "$OUTBOX" ]; then
                     HISTORY=$(jq -r '
-                        [.messages[-3:][]] |
-                        map("[\(.from)]: \(.text[0:200])") |
+                        [.messages[-5:][]] |
+                        map("[\(.from)]: \(.text)") |
                         join("\n---\n")
                     ' "$OUTBOX" 2>/dev/null || echo "")
                 fi
@@ -178,15 +178,14 @@ You have FULL tool access: use write_file to create/edit files, run_shell_comman
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
 - NEVER delete, rename, or move any files unless the user explicitly asked you to.
-- Do NOT create any summary or telegram files (no telegram_summary.md etc).
-Execute the workflow above step by step. Then output a Telegram-friendly summary to stdout.
-Do NOT create a file for the summary — just print it to stdout between these markers: <<<TELEGRAM>>> and <<<END>>>.
-Rules for the Telegram summary:
+Execute the workflow above step by step.
+When done, write a short Telegram-friendly reply to the file: .gemini/telegram_reply.txt
+Rules for the reply file:
 - Use plain text with emoji for structure
 - Use bullet points (•) for lists
 - No markdown headers or code blocks
 - Be concise but complete — include all important information
-- This is the ONLY part that gets sent to the user's phone"
+- This file gets sent directly to the user's phone"
                 else
                     # Normal message (no workflow)
                     TELEGRAM_PROMPT="📱 Telegram message from the user:
@@ -197,15 +196,14 @@ You have FULL tool access: use write_file to create/edit files, run_shell_comman
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
 - NEVER delete, rename, or move any files unless the user explicitly asked you to.
-- Do NOT create any summary or telegram files (no telegram_summary.md etc).
-Execute the user's request above. Then output a Telegram-friendly summary to stdout.
-Do NOT create a file for the summary — just print it to stdout between these markers: <<<TELEGRAM>>> and <<<END>>>.
-Rules for the Telegram summary:
+Execute the user's request above.
+When done, write a short Telegram-friendly reply to the file: .gemini/telegram_reply.txt
+Rules for the reply file:
 - Use plain text with emoji for structure
 - Use bullet points (•) for lists
 - No markdown headers or code blocks
 - Be concise but complete — include all important information
-- This is the ONLY part that gets sent to the user's phone"
+- This file gets sent directly to the user's phone"
                 fi
 
                 # Temporarily disable hooks (Gemini CLI bug workaround)
@@ -223,13 +221,15 @@ Rules for the Telegram summary:
                     mv "${TARGET_SETTINGS}.watcher-bak" "$TARGET_SETTINGS"
                 fi
 
-                # Extract <<<TELEGRAM>>>...<<<END>>> response
+                # Read Telegram reply from file (written by Gemini)
+                REPLY_FILE="$ACTIVE_PROJECT/.gemini/telegram_reply.txt"
                 TELEGRAM_RESPONSE=""
-                if echo "$GEMINI_OUTPUT" | grep -q "<<<TELEGRAM>>>"; then
-                    TELEGRAM_RESPONSE=$(echo "$GEMINI_OUTPUT" | sed -n '/<<<TELEGRAM>>>/,/<<<END>>>/p' | grep -v '<<<TELEGRAM>>>' | grep -v '<<<END>>>')
+                if [ -f "$REPLY_FILE" ]; then
+                    TELEGRAM_RESPONSE=$(cat "$REPLY_FILE")
+                    rm -f "$REPLY_FILE"
                 fi
                 if [ -z "$TELEGRAM_RESPONSE" ]; then
-                    TELEGRAM_RESPONSE=$(echo "$GEMINI_OUTPUT" | tail -c 1500)
+                    TELEGRAM_RESPONSE=$(echo "$GEMINI_OUTPUT" | tail -c 500)
                 fi
 
                 # Commit changes on branch
