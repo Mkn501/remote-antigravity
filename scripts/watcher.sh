@@ -176,8 +176,11 @@ $HISTORY_SECTION
 ---
 You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
-Execute the workflow above step by step. Then write a Telegram-friendly summary.
-Place this summary between the markers <<<TELEGRAM>>> and <<<END>>>.
+CRITICAL RULES:
+- NEVER delete, rename, or move any files unless the user explicitly asked you to.
+- Do NOT create any summary or telegram files (no telegram_summary.md etc).
+Execute the workflow above step by step. Then output a Telegram-friendly summary to stdout.
+Do NOT create a file for the summary — just print it to stdout between these markers: <<<TELEGRAM>>> and <<<END>>>.
 Rules for the Telegram summary:
 - Use plain text with emoji for structure
 - Use bullet points (•) for lists
@@ -192,8 +195,11 @@ $HISTORY_SECTION
 ---
 You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
-Execute the user's request above. Then write a Telegram-friendly summary.
-Place this summary between the markers <<<TELEGRAM>>> and <<<END>>>.
+CRITICAL RULES:
+- NEVER delete, rename, or move any files unless the user explicitly asked you to.
+- Do NOT create any summary or telegram files (no telegram_summary.md etc).
+Execute the user's request above. Then output a Telegram-friendly summary to stdout.
+Do NOT create a file for the summary — just print it to stdout between these markers: <<<TELEGRAM>>> and <<<END>>>.
 Rules for the Telegram summary:
 - Use plain text with emoji for structure
 - Use bullet points (•) for lists
