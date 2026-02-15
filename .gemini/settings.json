@@ -1,0 +1,30 @@
+{
+    "hooks": {
+        "BeforeAgent": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "name": "wa-bridge-inject",
+                        "type": "command",
+                        "command": "$GEMINI_PROJECT_DIR/scripts/hooks/before_agent_wa.sh",
+                        "timeout": 10000
+                    }
+                ]
+            }
+        ],
+        "AfterAgent": [
+            {
+                "matcher": "*",
+                "hooks": [
+                    {
+                        "name": "wa-bridge-extract",
+                        "type": "command",
+                        "command": "$GEMINI_PROJECT_DIR/scripts/hooks/after_agent_wa.sh",
+                        "timeout": 10000
+                    }
+                ]
+            }
+        ]
+    }
+}

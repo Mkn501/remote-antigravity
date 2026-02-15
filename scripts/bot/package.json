@@ -1,0 +1,15 @@
+{
+    "name": "wa-bridge-bot",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Telegram relay bot for Remote Antigravity hook bridge",
+    "type": "module",
+    "scripts": {
+        "start": "node bot.js",
+        "dev": "node --watch bot.js"
+    },
+    "dependencies": {
+        "node-telegram-bot-api": "^0.66.0",
+        "dotenv": "^16.4.0"
+    }
+}

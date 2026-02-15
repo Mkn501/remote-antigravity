@@ -14,15 +14,15 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 ## In Progress
 
 ## To Do
-- [ ] [Feature] [Hooks] Create BeforeAgent hook script for inbox injection [Difficulty: 3]
-- [ ] [Feature] [Hooks] Create AfterAgent hook script for outbox writing [Difficulty: 3]
-- [ ] [Feature] [Bot] Implement WhatsApp/Telegram message listener bot [Difficulty: 5]
-- [ ] [Infra] [Config] Create .gemini/settings.json hook configuration [Difficulty: 2]
-- [ ] [Feature] [Bot] Implement outbox watcher and message sender [Difficulty: 4]
-- [ ] [Docs] Write setup and usage guide [Difficulty: 2]
+- [ ] [Feature] [Hooks] Create BeforeAgent hook script for inbox injection [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 3]
+- [ ] [Feature] [Hooks] Create AfterAgent hook script for outbox writing [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 3]
+- [ ] [Feature] [Bot] Implement Telegram message listener bot [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 5]
+- [ ] [Infra] [Config] Create .gemini/settings.json hook configuration [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 2]
+- [ ] [Feature] [Bot] Implement outbox poller and message sender [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 4]
+- [ ] [Docs] Write setup and usage guide [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 2]
 
 ## Backlog
-- [ ] [Feature] [Sprint] Implement Sprint Mode (autonomous task loop with AfterAgent re-prompting) [Difficulty: 6]
+- [ ] [Feature] [Sprint] Implement Sprint Mode with stop signal protocol [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 6]
 - [ ] [Research] [Platform] Evaluate Telegram vs WhatsApp for simplicity and reliability [Difficulty: 3]
 
 ## Done

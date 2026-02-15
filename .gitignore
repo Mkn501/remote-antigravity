@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Environment secrets
+.env
+
+# Hook bridge runtime files
+.gemini/wa_inbox.json
+.gemini/wa_outbox.json
+.gemini/after_agent_debug.json
+
+# Temp files from atomic writes
+*.tmp
+
+# OS
+.DS_Store
