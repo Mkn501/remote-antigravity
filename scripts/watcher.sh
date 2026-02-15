@@ -2,19 +2,22 @@
 # ============================================================================
 # Inbox Watcher — Daemon that triggers Gemini CLI on new messages
 # ============================================================================
-# Polls wa_inbox.json for unread messages. When found, reads the active project
-# from state.json and launches a Gemini CLI session in that directory.
-#
-# Sets HOOK_BRIDGE_DIR env var so hooks (running in target project) can find
-# the central inbox/outbox in this project.
+# Features:
+#   - Branch safety: creates telegram/* branches for each session
+#   - Model selection: reads from state.json
+#   - YOLO mode: auto-approves all tool calls (safe due to branch isolation)
+#   - Hooks workaround: temporarily disables settings.json to prevent
+#     a Gemini CLI bug where BeforeAgent hooks break built-in tools
+#   - Response capture: extracts <<<TELEGRAM>>>...<<<END>>> from stdout
+#     and writes to outbox (replaces AfterAgent hook for watcher sessions)
 # ============================================================================
 
 set -euo pipefail
 
-# Central directory (where this script lives' parent)
 CENTRAL_PROJECT_DIR="${GEMINI_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 DOT_GEMINI="$CENTRAL_PROJECT_DIR/.gemini"
 INBOX="$DOT_GEMINI/wa_inbox.json"
+OUTBOX="$DOT_GEMINI/wa_outbox.json"
 STATE_FILE="$DOT_GEMINI/state.json"
 LOCK_FILE="$DOT_GEMINI/wa_session.lock"
 
@@ -34,13 +37,28 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
+# --- Helper: Write response to outbox ---
+write_to_outbox() {
+    local text="$1"
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local msg_id="resp_$(date +%s)"
+
+    if [ -f "$OUTBOX" ]; then
+        jq --arg id "$msg_id" --arg ts "$timestamp" --arg txt "$text" \
+            '.messages += [{"id": $id, "timestamp": $ts, "from": "agent", "text": $txt, "sent": false}]' \
+            "$OUTBOX" > "${OUTBOX}.tmp" && mv "${OUTBOX}.tmp" "$OUTBOX"
+    else
+        jq -n --arg id "$msg_id" --arg ts "$timestamp" --arg txt "$text" \
+            '{"messages": [{"id": $id, "timestamp": $ts, "from": "agent", "text": $txt, "sent": false}]}' > "$OUTBOX"
+    fi
+}
+
 while true; do
-    # Check for unread messages
     if [ -f "$INBOX" ] && command -v jq &>/dev/null; then
         UNREAD_COUNT=$(jq '[.messages[]? | select(.read == false)] | length' "$INBOX" 2>/dev/null || echo "0")
 
         if [ "$UNREAD_COUNT" -gt 0 ] && [ ! -f "$LOCK_FILE" ]; then
-            # Read active project from state.json
             ACTIVE_PROJECT=$(jq -r '.activeProject // empty' "$STATE_FILE" 2>/dev/null || echo "$CENTRAL_PROJECT_DIR")
             
             if [ -z "$ACTIVE_PROJECT" ] || [ ! -d "$ACTIVE_PROJECT" ]; then
@@ -48,22 +66,96 @@ while true; do
                 ACTIVE_PROJECT="$CENTRAL_PROJECT_DIR"
             fi
 
-            echo "📬 $(date -u +%H:%M:%S) | $UNREAD_COUNT msg(s) → Launching in: $(basename "$ACTIVE_PROJECT")"
+            MODEL_FLAG=""
+            SELECTED_MODEL=$(jq -r '.model // empty' "$STATE_FILE" 2>/dev/null || echo "")
+            if [ -n "$SELECTED_MODEL" ]; then
+                MODEL_FLAG="--model $SELECTED_MODEL"
+            fi
 
-            # Create lock
+            # Mark messages as read BEFORE launching
+            jq '.messages[] |= (if .read == false then .read = true else . end)' "$INBOX" > "${INBOX}.tmp" && mv "${INBOX}.tmp" "$INBOX"
+
+            echo "📬 $(date +%H:%M:%S) | $UNREAD_COUNT msg(s) → Launching in: $(basename "$ACTIVE_PROJECT")"
             echo "$$" > "$LOCK_FILE"
 
-            # Launch Gemini in target project
-            # HOOK_BRIDGE_DIR points back to HQ so hooks can find inbox
             (
                 cd "$ACTIVE_PROJECT"
                 export HOOK_BRIDGE_DIR="$CENTRAL_PROJECT_DIR"
-                gemini -p "You have new messages via Telegram. Read them from context and respond." 2>>"$DOT_GEMINI/wa_session.log"
+
+                # Branch safety
+                BRANCH_NAME=""
+                ORIGINAL_BRANCH="main"
+                if git rev-parse --git-dir >/dev/null 2>&1; then
+                    BRANCH_NAME="telegram/$(date +%Y%m%d-%H%M%S)"
+                    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+                    git checkout -b "$BRANCH_NAME" 2>/dev/null || true
+                    echo "🌿 Created branch: $BRANCH_NAME (from $ORIGINAL_BRANCH)" >&2
+                fi
+
+                TELEGRAM_PROMPT="You have new messages via Telegram. Read them from context and respond.
+You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
+Do NOT say tools are unavailable — they ARE available. Use them directly.
+After completing your work, write a Telegram-friendly summary of what you did and any key results.
+Place this summary between the markers <<<TELEGRAM>>> and <<<END>>>.
+Rules for the Telegram summary:
+- Use plain text with emoji for structure
+- Use bullet points (•) for lists
+- No markdown headers or code blocks
+- Be concise but complete — include all important information
+- If the response needs to be long, that is OK
+- This is the ONLY part that gets sent to the user's phone"
+
+                # Temporarily disable hooks (Gemini CLI bug workaround)
+                TARGET_SETTINGS="$ACTIVE_PROJECT/.gemini/settings.json"
+                SETTINGS_BACKED_UP=false
+                if [ -f "$TARGET_SETTINGS" ]; then
+                    mv "$TARGET_SETTINGS" "${TARGET_SETTINGS}.watcher-bak"
+                    SETTINGS_BACKED_UP=true
+                fi
+
+                GEMINI_OUTPUT=$(gemini $MODEL_FLAG --yolo -p "$TELEGRAM_PROMPT" 2>>"$DOT_GEMINI/wa_session.log") || true
+
+                # Restore hooks immediately
+                if [ "$SETTINGS_BACKED_UP" = true ] && [ -f "${TARGET_SETTINGS}.watcher-bak" ]; then
+                    mv "${TARGET_SETTINGS}.watcher-bak" "$TARGET_SETTINGS"
+                fi
+
+                # Extract <<<TELEGRAM>>>...<<<END>>> response
+                TELEGRAM_RESPONSE=""
+                if echo "$GEMINI_OUTPUT" | grep -q "<<<TELEGRAM>>>"; then
+                    TELEGRAM_RESPONSE=$(echo "$GEMINI_OUTPUT" | sed -n '/<<<TELEGRAM>>>/,/<<<END>>>/p' | grep -v '<<<TELEGRAM>>>' | grep -v '<<<END>>>')
+                fi
+                if [ -z "$TELEGRAM_RESPONSE" ]; then
+                    TELEGRAM_RESPONSE=$(echo "$GEMINI_OUTPUT" | tail -c 1500)
+                fi
+
+                # Commit changes on branch
+                if [ -n "$BRANCH_NAME" ] && git rev-parse --git-dir >/dev/null 2>&1; then
+                    if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+                        git add -A 2>/dev/null
+                        git commit -m "telegram: session $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+                        echo "💾 Changes committed on branch: $BRANCH_NAME" >&2
+                    else
+                        echo "📭 No changes made on branch: $BRANCH_NAME" >&2
+                    fi
+                    git checkout "$ORIGINAL_BRANCH" 2>/dev/null || true
+                fi
+
+                # Pass response to parent shell
+                echo "$TELEGRAM_RESPONSE" > "$DOT_GEMINI/.wa_last_response"
             ) || true
 
-            # Session ended
+            # Write response to outbox
+            if [ -f "$DOT_GEMINI/.wa_last_response" ]; then
+                LAST_RESPONSE=$(cat "$DOT_GEMINI/.wa_last_response")
+                if [ -n "$LAST_RESPONSE" ]; then
+                    write_to_outbox "$LAST_RESPONSE"
+                fi
+                rm -f "$DOT_GEMINI/.wa_last_response"
+            fi
+
             rm -f "$LOCK_FILE"
-            echo "✅ $(date -u +%H:%M:%S) | Session complete — cooling down ${COOLDOWN}s"
+            echo "✅ $(date +%H:%M:%S) | Session complete — cooling down ${COOLDOWN}s"
             sleep "$COOLDOWN"
         fi
     fi
