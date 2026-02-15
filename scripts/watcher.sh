@@ -233,11 +233,10 @@ Rules for the Telegram summary:
                     fi
 
                     # /shutdown → switch to main, keep branch for review/merge
+                    # Otherwise: STAY on telegram/active for next session
                     if [ "$IS_SHUTDOWN" = true ]; then
                         git checkout main 2>/dev/null || true
                         echo "🏁 Session closed — branch '$ACTIVE_BRANCH' ready for review" >&2
-                    else
-                        git checkout "$ORIGINAL_BRANCH" 2>/dev/null || true
                     fi
                 fi
 
