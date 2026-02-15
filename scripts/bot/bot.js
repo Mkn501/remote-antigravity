@@ -161,7 +161,7 @@ const MODEL_OPTIONS = [
 
 bot.onText(/^\/model$/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
-    const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const state = readJsonSafe(STATE_FILE, {});
     const current = state.model || 'default';
     const currentLabel = MODEL_OPTIONS.find(m => m.id === current)?.short || current;
 
@@ -182,9 +182,9 @@ bot.on('callback_query', async (query) => {
     const modelInfo = MODEL_OPTIONS.find(m => m.id === modelId);
     if (!modelInfo) return;
 
-    const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const state = readJsonSafe(STATE_FILE, {});
     state.model = modelId;
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    atomicWrite(STATE_FILE, state);
 
     await bot.answerCallbackQuery(query.id, { text: `Switched to ${modelInfo.short}` });
     await bot.editMessageText(`🤖 Model switched to: *${modelInfo.short}*`, {
