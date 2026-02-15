@@ -232,12 +232,10 @@ Rules for the Telegram summary:
                         echo "📭 No changes made" >&2
                     fi
 
-                    # /shutdown → archive the branch (session complete)
+                    # /shutdown → switch to main, keep branch for review/merge
                     if [ "$IS_SHUTDOWN" = true ]; then
-                        ARCHIVE_NAME="telegram/archive-$(date +%Y%m%d-%H%M%S)"
                         git checkout main 2>/dev/null || true
-                        git branch -m "$ACTIVE_BRANCH" "$ARCHIVE_NAME" 2>/dev/null || true
-                        echo "📦 Session closed → $ARCHIVE_NAME" >&2
+                        echo "🏁 Session closed — branch '$ACTIVE_BRANCH' ready for review" >&2
                     else
                         git checkout "$ORIGINAL_BRANCH" 2>/dev/null || true
                     fi
