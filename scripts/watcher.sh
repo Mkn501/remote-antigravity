@@ -180,6 +180,8 @@ You have FULL tool access: use write_file to create/edit files, run_shell_comman
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
 - NEVER delete, rename, or move any files unless the user explicitly asked you to.
+- For ANY research task, ALWAYS use web search (Google Search tool) to get current data. Never rely solely on training data.
+- Follow instructions LITERALLY. If the workflow says 'plan' or 'spec', produce ONLY the document — do NOT implement.
 Execute the workflow above step by step.
 When done, write a short Telegram-friendly reply to the file: .gemini/telegram_reply.txt
 Rules for the reply file:
@@ -200,7 +202,9 @@ You have FULL tool access: use write_file to create/edit files, run_shell_comman
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
 - NEVER delete, rename, or move any files unless the user explicitly asked you to.
-Execute the user's request above.
+- For ANY research task, ALWAYS use web search (Google Search tool) to get current data. Never rely solely on training data.
+- Follow the user's request EXACTLY as stated. If they ask for a spec, plan, or analysis, produce ONLY that document — do NOT implement or write code.
+- Only write code if the user explicitly asks you to implement, build, or code something.
 When done, write a short Telegram-friendly reply to the file: .gemini/telegram_reply.txt
 Rules for the reply file:
 - Use plain text with emoji for structure
