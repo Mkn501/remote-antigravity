@@ -49,9 +49,18 @@ npm install
 cd ../..
 ```
 
-### Starting Everything (Background)
+### Starting Everything
 
-Open a terminal in the project root and run:
+```bash
+./start.sh          # Start bot + watcher in background
+./start.sh status   # Check if running
+./start.sh stop     # Stop everything
+```
+
+Logs are written to `.gemini/bot.log` and `.gemini/watcher.log`.
+
+<details>
+<summary>Manual start (alternative)</summary>
 
 ```bash
 # Start the Telegram bot (background)
@@ -62,26 +71,7 @@ cd ../..
 ./scripts/watcher.sh &
 ```
 
-Both processes will run in the background. To verify:
-
-```bash
-# Check status
-pgrep -f "bot.js" && echo "Bot ✅" || echo "Bot ❌"
-pgrep -f "watcher.sh" && echo "Watcher ✅" || echo "Watcher ❌"
-```
-
-### Stopping
-
-```bash
-pkill -f "bot.js"
-pkill -f "watcher.sh"
-```
-
-### One-liner (start both)
-
-```bash
-(cd scripts/bot && node bot.js &) && ./scripts/watcher.sh &
-```
+</details>
 
 ## 📱 Bot Commands
 
