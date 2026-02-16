@@ -44,10 +44,16 @@ Remote Antigravity enables **Telegram-based control** of Antigravity development
 # 1. Install bot dependencies
 cd scripts/bot
 cp .env.example .env
-# Edit .env with your TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GEMINI_PROJECT_DIR
+# Edit .env — see variable descriptions below
 npm install
 cd ../..
 ```
+
+| Variable | Description |
+|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | Token from [@BotFather](https://t.me/BotFather) — the bot's API key |
+| `TELEGRAM_CHAT_ID` | Your personal chat ID — only messages from this ID are accepted |
+| `GEMINI_PROJECT_DIR` | Absolute path to your default project root (where `.gemini/` lives). If left blank, defaults to the repo root. |
 
 ### Starting Everything
 
