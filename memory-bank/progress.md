@@ -17,6 +17,7 @@
 - [x] **M9: Project Selection UI** — `/project` command with inline keyboard
 - [x] **M10: One-Script Startup** — `start.sh` with start/stop/status
 - [x] **M11: Security Review** — Full audit with OpenClaw.ai comparison
+- [x] **M12: Workflow Hardening** — Decoupled validation/merge, version footers, template v2.0.0 sync
 
 ## Known Risks
 - `--yolo` mode auto-approves all Gemini tool calls — accepted for single-user personal use.

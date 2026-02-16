@@ -42,3 +42,8 @@
 - **T&E**: [Security review retrospective](../docs/retrospectives/2026-02-16_telegram_bot_security_review.md)
 - **Key Lesson**: `--yolo` is a trust decision — acceptable for personal bots, never for shared/team setups.
 
+## 008: Decoupled Validation and Merge Workflows (2026-02-16)
+- **Decision**: Split `/pr_check` into validation-only and created a separate `/merge_changes` workflow.
+- **Rationale**: Merging was buried inside the validation workflow, violating separation of concerns. The user must always retain final merge authority.
+- **Outcome**: `/pr_check` produces a `.pr_check_result.json` state file; `/merge_changes` gates on that file. Rollback playbook and conflict handling added.
+- **Key Lesson**: Validation and execution are separate trust boundaries — never combine "should we?" with "do it."

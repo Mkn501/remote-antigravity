@@ -9,6 +9,7 @@ node_modules/
 .gemini/wa_outbox.json
 .gemini/after_agent_debug.json
 .gemini/state.json
+.pr_check_result.json
 *.log
 
 # Temp files from atomic writes

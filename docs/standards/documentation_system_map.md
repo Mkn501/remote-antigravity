@@ -19,8 +19,9 @@
 │  ~/.gemini/antigravity/global_workflows/                        │
 │    ├── startup.md / shutdown.md                                 │
 │    ├── plan_feature.md / implement_task.md                      │
-│    ├── pr_check.md / update_roadmap.md                          │
-│    └── init_project.md / setup-mcp-tasks.md                     │
+│    ├── pr_check.md / merge_changes.md                           │
+│    ├── update_roadmap.md / init_project.md                      │
+│    └── setup-mcp-tasks.md                                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  LOCAL (Per-workspace)                                          │
 │                                                                 │
@@ -50,7 +51,8 @@
 | **Evaluate a feature idea** | `/update_roadmap` (Scenario 6) → full evaluation |
 | **Change architecture** | `/update_roadmap` (Scenario 2) → check ripple map |
 | **Implement a task** | `/implement_task` → pick from backlog, TDD cycle |
-| **Review a PR** | `/pr_check` → diff-only review (Tier 1) or local testing (Tier 2) |
+| **Review a PR** | `/pr_check` → Validation & Risk Report (Local PR or GitHub) |
+| **Merge Changes** | `/merge_changes` → Execution & branch cleanup |
 | **Delegate a task to Jules** | Fill `_JULES_HANDOFF_TEMPLATE.md` → GitHub Issue + `jules` label |
 | **Write a retrospective** | Copy `_RETRO_TEMPLATE.md` → fill sections → update `retro_index.md` |
 | **End my session** | `/shutdown` → sync memory bank, retrospective, commit |
@@ -68,7 +70,9 @@
     ↓
 /implement_task → TDD cycle (repeat per task)
     ↓
-/pr_check → Review & merge PRs
+/pr_check → Validation & Risk Audit (Local PR or GitHub)
+    ↓
+/merge_changes → Final Execution & Cleanup
     ↓
 /shutdown → Retrospective, sync, commit
 ```
@@ -98,3 +102,6 @@
 | `docs/roadmap/4_products/_PRODUCT_ROADMAP_TEMPLATE.md` | Global | New product roadmap |
 | `AGENTS.md` | **repo root** | Persistent context for Jules (architecture, standards, env setup) |
 | `CHANGELOG.md` | **template** | System-level changelog and template versioning |
+
+---
+> **Document Version**: 2.0 | **Last Updated**: 2026-02-16 | **Change**: Added merge_changes.md, Local PR references, updated flow diagram.

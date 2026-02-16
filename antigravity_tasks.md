@@ -1,6 +1,6 @@
-# Tasks - Remote Antigravity
+# Tasks - Antigravity Tasks
 
-<!-- TEMPLATE_VERSION: 1.1.0 -->
+<!-- TEMPLATE_VERSION: 2.0.0 -->
 <!--
 ### Task Schema
 Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1-10] [Jules: Yes]`
@@ -13,13 +13,19 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 
 ## In Progress
 
-## To Do
 - [ ] [Security] [Bot] Add CHAT_ID check to callback_query handler [Difficulty: 1]
+
+## To Do
+
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 
 ## Backlog
 
+- [ ] [Research] Investigate replacing Gemini CLI with Claude Code — pro/contra analysis, impact on hook system, messaging protocol, and watcher.sh
+- [ ] [Research] Investigate replacing Gemini CLI with Kilo CLI — pro/contra analysis, impact on hook system, messaging protocol, and watcher.sh
+
 ## Done
+
 - [x] [Feature] [Hooks] Create BeforeAgent hook script for inbox injection [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 3] - COMPLETED 2026-02-15
 - [x] [Feature] [Hooks] Create AfterAgent hook script for outbox writing [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 3] - COMPLETED 2026-02-15
 - [x] [Feature] [Bot] Implement Telegram message listener bot [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 5] - COMPLETED 2026-02-15
@@ -36,5 +42,16 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 - [x] [Infra] `start.sh` one-script launcher with start/stop/status - COMPLETED 2026-02-16
 - [x] [Security] Security review with OpenClaw.ai comparison - COMPLETED 2026-02-16
 - [x] [Docs] README rewrite with architecture, commands, and startup instructions - COMPLETED 2026-02-16
+- [x] [Implementation] Propose improvements to pr_check.md for project branches
+- [x] [Research] Analyze current pr_check.md workflow
+- [x] [Analysis] Evaluate multi-project branch validation requirements
+- [x] [Docs] Update documentation_system_map.md for new workflows
+- [x] [SOP] Synchronize workstation_sop.md with project template
+- [x] [Workflow] Refactor pr_check.md to validation-only
+- [x] [Workflow] Create merge_changes.md global workflow
+
+## Notes
 
 ## Deleted
+
+- [ ] ->

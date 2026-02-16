@@ -82,3 +82,15 @@ Unless explicitly instructed:
 - **Scope**: Only modify files listed in the task
 - **Dependencies**: Do NOT add new dependencies unless explicitly asked
 - **Tests**: Every code change must include or update tests
+
+## Local PRs & Validation Protocol
+
+Remote sessions (e.g., via Telegram/WhatsApp) generate **session branches** like `telegram/active`. These are treated as **"Local PRs"** and follow the same validation rules as GitHub PRs:
+
+1. **No direct merge to main.** All branches must pass `/pr_check` validation first.
+2. **Include tests.** Every code change in a session branch must include or update test files.
+3. **Document changes.** If your change affects architecture, include updates to `memory-bank/` files.
+4. **The human decides.** The merge is always a manual decision by the project owner via `/merge_changes`.
+
+---
+> **Document Version**: 2.0 | **Last Updated**: 2026-02-16 | **Change**: Added Local PRs & Validation Protocol section.

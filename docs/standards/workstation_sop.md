@@ -110,7 +110,7 @@ To ensure clarity for both humans and AI, we use a tiered documentation structur
 - **Kilo (The Modes)**: These are flexible "hats" you wear. The global workflows automatically guide you into the right mode at each step — you don't need to switch modes manually.
 
 **The Cycle** (embedded in workflows):
-Startup → Plan → Build → Verify → Report → Shutdown
+Startup → Plan → Build → Verify (Local PR) → Audit (Risk Report) → Merge → Report → Shutdown
 
 
 ### 5.4. The Specification Layer (The "Order" vs The "Ticket")
@@ -125,6 +125,11 @@ We deliberately separate **Human Intent** (`docs/specs/`) from **Agent Execution
   - **Audience**: AI Agents and Tools.
   - **Purpose**: The internal database of atomic units of work, dependencies, and status.
   - **Why here?**: This is the "engine room." It contains the granular steps required to fulfill the Order.
+
+### 5.5. Local PRs (Session Branches)
+Every remote session (e.g., `telegram/active`) is considered a **"Local PR"**. 
+- It requires the same level of architectural audit and testing as a GitHub PR.
+- It MUST pass `/pr_check` validation before being merged via `/merge_changes`.
 
 **The Workflow**:
 1.  **Input**: Human writes `docs/specs/feature.md`.
@@ -274,19 +279,19 @@ You are the gatekeeper for BOTH human and AI code.
 
 ## 1. The "Green CI" Rule
 - **Mandatory Check**: You must NEVER merge a PR without verifying that the CI/CD status is **Green/Passing**.
-- **Action**: Use `github_mcp` to check status. Eliminate `failure` or `pending` states before merging.
+- **Action**: Use `mcp_github` to check status. Eliminate `failure` or `pending` states before merging.
 
 ## 2. Testing Constraints (Regression)
 - **Regression Tester**: Run the WHOLE suite.
 - **Integration Check**: Verify that the new feature plays nicely with the rest of the app.
-- **Safe Mode**: When reviewing PRs, use `git worktree` to create a separate review folder. NEVER dirty the main working directory.
+- **Safe Mode (Virtual Isolation)**: When reviewing PRs or Local PRs, use `git worktree` to create a separate review folder. NEVER dirty the main working directory.
 
-## 3. Merge & Sync (The Shutdown Protocol)
-- **Method**: Use **Squash Merge** by default.
-- **Post-Merge**:
-    - `git pull` immediate sync.
-    - Update `memory-bank/progress.md`.
-    - Update `memory-bank/decision-log.md` with lessons learned.
+## 3. Validation & Merge (The Check-then-Merge Protocol)
+- **Check First**: Execute `/pr_check` to generate a structured Risk Report.
+- **Audit Briefing**: Present changes, coverage, and gaps to the user before test execution.
+- **Safe Merge**: Only execute `/merge_changes` after user approval of the Risk Report.
+- **Cleanup**: Delete temporary worktrees; keep failed branches for debugging.
+- **Sync**: After merge, performs `git pull` and updates `memory-bank/`.
 
 ---
 
@@ -302,7 +307,8 @@ You are the gatekeeper for BOTH human and AI code.
 | **Startup** | `/startup` | Beginning of any session | `activeContext.md`, `antigravity_tasks.md` |
 | **Plan Feature** | `/plan_feature` | New feature or architecture change | Spec from `docs/specs/`, `systemPatterns.md` |
 | **Implement Task** | `/implement_task` | Coding a specific task | Task from backlog, `retro_index.md` for past lessons |
-| **PR Check** | `/pr_check` | Reviewing/merging a PR (especially Jules) | GitHub MCP tools |
+| **PR Check** | `/pr_check` | **Validation Only**: Test PRs & Local Branches | Risk Report, `git worktree` |
+| **Merge Changes** | `/merge_changes` | **Merger**: Execution & Cleanup | Approved Risk Report |
 | **Shutdown** | `/shutdown` | End of any session | Memory bank files, `_RETRO_TEMPLATE.md` |
 | **Update Roadmap** | `/update_roadmap` | Cross-product dependency changes | `docs/roadmap/` |
 | **Init Project** | `/init_project` | New project or compliance audit | Project template |
@@ -349,3 +355,6 @@ These rules are enforced by the workflows themselves. They are listed here for q
 **Process**: Planner uses **Jules Filter** to offload routine tasks.
 **Parallel Execution**: You build human tasks. Jules builds AI tasks.
 **Convergence**: Auditor merges Jules's PRs and validates local code.
+
+---
+> **Document Version**: 2.0 | **Last Updated**: 2026-02-16 | **Change**: Added Local PRs, Check-then-Merge protocol, decoupled validation/merge workflows.
