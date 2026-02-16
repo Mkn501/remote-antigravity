@@ -20,8 +20,10 @@
 
 import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
-import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from 'fs';
-import { resolve, dirname, isAbsolute } from 'path';
+import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, statSync, unlinkSync, createReadStream } from 'fs';
+import { resolve, dirname, isAbsolute, join } from 'path';
+import { tmpdir } from 'os';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 // --- Config ---
@@ -123,23 +125,42 @@ console.log(`   💾 State:   ${STATE_FILE}`);
 console.log(`   💬 Chat ID: ${CHAT_ID}`);
 console.log('');
 
+// --- Startup Notification ---
+(async () => {
+    try {
+        const state = getState();
+        const projectName = Object.entries(state.projects || {}).find(([, p]) => p === state.activeProject)?.[0] || 'unknown';
+        console.log(`🔔 Sending startup notification to chat ${CHAT_ID}...`);
+        const result = await bot.sendMessage(CHAT_ID, [
+            '🟢 Bot Started',
+            '📂 Project: ' + projectName,
+            '⏰ ' + new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }),
+            '',
+            'Send /help for commands.'
+        ].join('\n'));
+        console.log(`🔔 Startup notification sent (msg_id: ${result.message_id})`);
+    } catch (err) {
+        console.error(`Startup notification failed: ${err.message}`);
+    }
+})();
+
 // --- Commands ---
 
 bot.onText(/^\/help/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     const help = [
-        '🤖 *Antigravity Bot Commands*',
+        '🤖 Antigravity Bot Commands',
         '',
-        '⚡ *Workflow Commands* (→ Gemini CLI):',
+        '⚡ Workflow Commands (→ Gemini CLI):',
         '/startup — Load project context, fresh branch',
         '/shutdown — Save state, close session branch',
-        '/plan\_feature — Plan a new feature',
-        '/implement\_task — Implement an assigned task',
-        '/pr\_check — Check and merge PRs',
-        '/update\_roadmap — Update roadmap docs',
+        '/plan_feature — Plan a new feature',
+        '/implement_task — Implement an assigned task',
+        '/pr_check — Check and merge PRs',
+        '/update_roadmap — Update roadmap docs',
         '/new — Archive branch, start fresh',
         '',
-        '🔧 *Bot Commands* (instant):',
+        '🔧 Bot Commands (instant):',
         '/status — System status',
         '/stop — Halt agent',
         '/sprint — Sprint mode',
@@ -147,8 +168,9 @@ bot.onText(/^\/help/, async (msg) => {
         '/list — List projects',
         '/help — This message',
         '/model — Switch AI model',
+        '/clear_lock — Clear stuck session lock',
     ].join('\n');
-    await bot.sendMessage(CHAT_ID, help, { parse_mode: 'Markdown' });
+    await bot.sendMessage(CHAT_ID, help);
 });
 
 // --- Model Selection ---
@@ -165,8 +187,7 @@ bot.onText(/^\/model$/, async (msg) => {
     const current = state.model || 'default';
     const currentLabel = MODEL_OPTIONS.find(m => m.id === current)?.short || current;
 
-    await bot.sendMessage(CHAT_ID, `🤖 Current model: *${currentLabel}*\nSelect a model:`, {
-        parse_mode: 'Markdown',
+    await bot.sendMessage(CHAT_ID, `🤖 Current model: ${currentLabel}\nSelect a model:`, {
         reply_markup: {
             inline_keyboard: [MODEL_OPTIONS.map(m => ({
                 text: m.id === current ? `✅ ${m.label}` : m.label,
@@ -177,6 +198,9 @@ bot.onText(/^\/model$/, async (msg) => {
 });
 
 bot.on('callback_query', async (query) => {
+    // Auth: only accept from configured chat
+    if (String(query.message?.chat.id) !== String(CHAT_ID)) return;
+
     if (query.data?.startsWith('model:')) {
         const modelId = query.data.replace('model:', '');
         const modelInfo = MODEL_OPTIONS.find(m => m.id === modelId);
@@ -185,10 +209,9 @@ bot.on('callback_query', async (query) => {
         updateState(s => s.model = modelId);
 
         await bot.answerCallbackQuery(query.id, { text: `Switched to ${modelInfo.short}` });
-        await bot.editMessageText(`🤖 Model switched to: *${modelInfo.short}*`, {
+        await bot.editMessageText(`🤖 Model switched to: ${modelInfo.short}`, {
             chat_id: query.message.chat.id,
-            message_id: query.message.message_id,
-            parse_mode: 'Markdown'
+            message_id: query.message.message_id
         });
         console.log(`🤖 ${new Date().toISOString()} | Model → ${modelId}`);
     } else if (query.data?.startsWith('project:')) {
@@ -199,10 +222,9 @@ bot.on('callback_query', async (query) => {
         updateState(s => s.activeProject = state.projects[name]);
 
         await bot.answerCallbackQuery(query.id, { text: `Switched to ${name}` });
-        await bot.editMessageText(`📂 Switched to: *${name}*`, {
+        await bot.editMessageText(`📂 Switched to: ${name}`, {
             chat_id: query.message.chat.id,
-            message_id: query.message.message_id,
-            parse_mode: 'Markdown'
+            message_id: query.message.message_id
         });
         console.log(`📂 ${new Date().toISOString()} | Project → ${name}`);
     }
@@ -232,15 +254,15 @@ bot.onText(/^\/status/, async (msg) => {
     const state = getState();
 
     const status = [
-        '📊 **Bridge Status**',
-        `📂 Active Project: \`${state.activeProject}\``,
+        '📊 Bridge Status',
+        `📂 Active Project: ${state.activeProject}`,
         `📥 Inbox: ${inboxData.messages.length} total, ${unread} unread`,
         `📤 Outbox: ${outboxData.messages.length} total, ${unsent} unsent`,
         `${stopFlag ? '🔴' : '🟢'} Stop signal: ${stopFlag ? 'ACTIVE' : 'clear'}`,
         `🤖 Bot: running`
     ].join('\n');
 
-    await bot.sendMessage(CHAT_ID, status, { parse_mode: 'Markdown' });
+    await bot.sendMessage(CHAT_ID, status);
 });
 
 bot.onText(/^\/project$/, async (msg) => {
@@ -260,8 +282,7 @@ bot.onText(/^\/project$/, async (msg) => {
         rows.push(buttons.slice(i, i + 2));
     }
 
-    await bot.sendMessage(CHAT_ID, `📂 Active: *${Object.entries(projects).find(([, p]) => p === active)?.[0] || 'unknown'}*\nSelect a project:`, {
-        parse_mode: 'Markdown',
+    await bot.sendMessage(CHAT_ID, `📂 Active: ${Object.entries(projects).find(([, p]) => p === active)?.[0] || 'unknown'}\nSelect a project:`, {
         reply_markup: { inline_keyboard: rows }
     });
 });
@@ -277,7 +298,7 @@ bot.onText(/^\/project\s+(.+)/, async (msg, match) => {
     }
 
     updateState(s => s.activeProject = state.projects[name]);
-    await bot.sendMessage(CHAT_ID, `✅ Switched to project: **${name}**\n\`${state.projects[name]}\``, { parse_mode: 'Markdown' });
+    await bot.sendMessage(CHAT_ID, `✅ Switched to project: ${name}\n${state.projects[name]}`);
     console.log(`📂 Switched to project: ${name} (${state.projects[name]})`);
 });
 
@@ -292,12 +313,12 @@ bot.onText(/^\/add\s+(\S+)\s+(.+)/, async (msg, match) => {
     }
 
     if (!existsSync(path)) {
-        await bot.sendMessage(CHAT_ID, `❌ Directory not found:\n\`${path}\``, { parse_mode: 'Markdown' });
+        await bot.sendMessage(CHAT_ID, `❌ Directory not found:\n${path}`);
         return;
     }
 
     updateState(s => s.projects[name] = path);
-    await bot.sendMessage(CHAT_ID, `✅ Added project: **${name}**\n\`${path}\``, { parse_mode: 'Markdown' });
+    await bot.sendMessage(CHAT_ID, `✅ Added project: ${name}\n${path}`);
     console.log(`➕ Added project: ${name} -> ${path}`);
 });
 
@@ -305,15 +326,15 @@ bot.onText(/^\/list/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     const state = getState();
     const list = Object.entries(state.projects)
-        .map(([name, path]) => `- **${name}**: \`${path}\` ${state.activeProject === path ? '(ACTIVE)' : ''}`)
+        .map(([name, path]) => `- ${name}: ${path} ${state.activeProject === path ? '(ACTIVE)' : ''}`)
         .join('\n');
 
-    await bot.sendMessage(CHAT_ID, `📂 **Available Projects**:\n${list}`, { parse_mode: 'Markdown' });
+    await bot.sendMessage(CHAT_ID, `📂 Available Projects:\n${list}`);
 });
 
 
 // --- Inbound: Telegram → wa_inbox.json ---
-bot.on('message', (msg) => {
+bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
     const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
@@ -324,11 +345,130 @@ bot.on('message', (msg) => {
     if (!msg.text) return;
 
     writeToInbox(msg.text);
+
+    // Acknowledge receipt
+    try {
+        await bot.sendMessage(CHAT_ID, '⏳ Processing...', { disable_notification: true });
+    } catch (e) {
+        console.error('Failed to send ack:', e.message);
+    }
+
     const preview = msg.text.length > 80 ? msg.text.substring(0, 77) + '...' : msg.text;
     console.log(`📥 ${new Date().toISOString()} | ${preview}`);
 });
 
+// --- Health Check ---
+const LOCK_FILE = resolve(CENTRAL_DIR, 'wa_session.lock');
+
+bot.onText(/^\/clear_lock/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    if (existsSync(LOCK_FILE)) {
+        try {
+            unlinkSync(LOCK_FILE);
+            await bot.sendMessage(CHAT_ID, '✅ Lock file cleared manually.');
+            console.log('🔓 Lock file cleared manually');
+        } catch (err) {
+            await bot.sendMessage(CHAT_ID, `❌ Failed to clear lock: ${err.message}`);
+        }
+    } else {
+        await bot.sendMessage(CHAT_ID, 'ℹ️ No lock file found.');
+    }
+});
+
+// Track watcher status to avoid spamming alerts
+let watcherWasAlive = true;
+
+function isWatcherRunning() {
+    try {
+        const result = execSync('pgrep -f "watcher.sh"', { encoding: 'utf8', timeout: 3000 }).trim();
+        return result.length > 0;
+    } catch {
+        return false;
+    }
+}
+
+setInterval(async () => {
+    try {
+        // --- Check 1: Lock file health ---
+        if (existsSync(LOCK_FILE)) {
+            const stats = statSync(LOCK_FILE);
+            const ageMs = Date.now() - stats.mtimeMs;
+            const ageMin = Math.floor(ageMs / 1000 / 60);
+
+            // Long running task (> 10 mins), warn every 5 mins
+            if (ageMin > 10 && ageMin % 5 === 0) {
+                await bot.sendMessage(CHAT_ID, `⚠️ Health Alert\nTask running for ${ageMin} minutes.\nUse /stop to halt or /clear_lock if stuck.`);
+            }
+
+            // Stale lock (process dead)
+            const content = readFileSync(LOCK_FILE, 'utf8').trim();
+            const pid = parseInt(content, 10);
+            if (!isNaN(pid)) {
+                try {
+                    process.kill(pid, 0);
+                } catch (err) {
+                    if (err.code === 'ESRCH') {
+                        await bot.sendMessage(CHAT_ID, `⚠️ Stale Lock Detected\nWatcher process (PID ${pid}) is dead but lock file remains.\nAuto-clearing lock...`);
+                        unlinkSync(LOCK_FILE);
+                        console.log(`💀 Auto-cleared stale lock for dead PID ${pid}`);
+                    }
+                }
+            }
+        }
+
+        // --- Check 2: Watcher process alive ---
+        const watcherAlive = isWatcherRunning();
+
+        if (!watcherAlive && watcherWasAlive) {
+            // Watcher just died — alert with resolution options
+            await bot.sendMessage(CHAT_ID, [
+                '🔴 Watcher Down',
+                '',
+                'watcher.sh is not running.',
+                'Messages will NOT be processed.',
+                '',
+                'To fix, run on the host:',
+                'nohup bash scripts/watcher.sh > /dev/null 2>&1 &',
+                '',
+                'Or use /clear_lock if stuck.'
+            ].join('\n'));
+            console.log('🔴 Watcher down — alert sent');
+        } else if (watcherAlive && !watcherWasAlive) {
+            // Watcher came back
+            await bot.sendMessage(CHAT_ID, '🟢 Watcher Restored — message processing resumed.');
+            console.log('🟢 Watcher restored');
+        }
+
+        watcherWasAlive = watcherAlive;
+    } catch (err) {
+        console.error(`Health check error: ${err.message}`);
+    }
+}, 60000); // Check every minute
+
 // --- Outbound: wa_outbox.json → Telegram ---
+// If reply > MAX_MSG_LEN, send as a .md file attachment instead of splitting
+const FILE_SEND_THRESHOLD = MAX_MSG_LEN;
+
+async function sendAsFile(text) {
+    // Write reply to a temp .md file
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const tmpFile = join(tmpdir(), `gemini_reply_${ts}.txt`);
+    writeFileSync(tmpFile, text, 'utf8');
+
+    // Send first ~200 chars as caption preview
+    const preview = text.substring(0, 200).replace(/\n/g, ' ') + '…';
+    const caption = `📄 Full reply (${text.length} chars):\n${preview}`;
+
+    try {
+        await bot.sendDocument(CHAT_ID, tmpFile, {
+            caption: caption.substring(0, 1024) // Telegram caption limit
+        });
+    } finally {
+        // Clean up temp file
+        try { unlinkSync(tmpFile); } catch { /* ignore */ }
+    }
+}
+
 setInterval(async () => {
     if (!existsSync(OUTBOX)) return;
 
@@ -340,14 +480,20 @@ setInterval(async () => {
     for (const msg of unsent) {
         try {
             const text = msg.text || '(empty response)';
-            for (let i = 0; i < text.length; i += MAX_MSG_LEN) {
-                await bot.sendMessage(CHAT_ID, text.substring(i, i + MAX_MSG_LEN));
+
+            if (text.length > FILE_SEND_THRESHOLD) {
+                // Long reply → send as downloadable .md file
+                await sendAsFile(text);
+            } else {
+                // Short reply → send as text message
+                await bot.sendMessage(CHAT_ID, text);
             }
+
             msg.sent = true;
             dirty = true;
 
             const preview = text.length > 80 ? text.substring(0, 77) + '...' : text;
-            console.log(`📤 ${new Date().toISOString()} | ${preview}`);
+            console.log(`📤 ${new Date().toISOString()} | ${text.length > FILE_SEND_THRESHOLD ? '📄 FILE' : '💬 TEXT'} | ${preview}`);
         } catch (err) {
             console.error(`❌ Send failed: ${err.message}`);
             break;
@@ -358,6 +504,19 @@ setInterval(async () => {
         atomicWrite(OUTBOX, outbox);
     }
 }, POLL_INTERVAL_MS);
+
+// --- Error Handling (prevents crashes) ---
+bot.on('polling_error', (err) => {
+    console.error(`⚠️ Polling error: ${err.message}`);
+});
+
+bot.on('error', (err) => {
+    console.error(`⚠️ Bot error: ${err.message}`);
+});
+
+process.on('unhandledRejection', (err) => {
+    console.error(`⚠️ Unhandled rejection: ${err.message || err}`);
+});
 
 // --- Graceful Shutdown ---
 process.on('SIGINT', () => {

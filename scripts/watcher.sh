@@ -70,8 +70,16 @@ while true; do
 
             MODEL_FLAG=""
             SELECTED_MODEL=$(jq -r '.model // empty' "$STATE_FILE" 2>/dev/null || echo "")
+            
+            # Validate model name (allow alphanumeric, dots, hyphens, underscores, slashes, colons)
+            if [ -n "$SELECTED_MODEL" ] && [[ ! "$SELECTED_MODEL" =~ ^[a-zA-Z0-9._:/-]+$ ]]; then
+                 echo "⚠️  Invalid model name in state.json: '$SELECTED_MODEL'. Ignoring."
+                 SELECTED_MODEL=""
+            fi
+
+            GEMINI_ARGS=()
             if [ -n "$SELECTED_MODEL" ]; then
-                MODEL_FLAG="--model $SELECTED_MODEL"
+                GEMINI_ARGS+=("--model" "$SELECTED_MODEL")
             fi
 
             # Extract unread message text BEFORE marking as read
@@ -96,6 +104,8 @@ while true; do
             jq '.messages[] |= (if .read == false then .read = true else . end)' "$INBOX" > "${INBOX}.tmp" && mv "${INBOX}.tmp" "$INBOX"
 
             echo "📬 $(date +%H:%M:%S) | $UNREAD_COUNT msg(s) → Launching in: $(basename "$ACTIVE_PROJECT")"
+            MSG_PREVIEW=$(echo "$USER_MESSAGES" | head -1 | cut -c1-60)
+            write_to_outbox "📥 Message received: $MSG_PREVIEW"
             echo "$$" > "$LOCK_FILE"
 
             (
@@ -151,6 +161,7 @@ while true; do
                     # Extract extra args after the command (e.g., "/startup quick" → "quick")
                     EXTRA_ARGS=$(echo "$USER_MESSAGES" | head -1 | sed "s|^/${WORKFLOW_CMD}[[:space:]]*||")
                     echo "⚡ Workflow detected: /$WORKFLOW_CMD" >&2
+                    write_to_outbox "⚡ Running workflow: /$WORKFLOW_CMD"
 
                     ARGS_SECTION=""
                     if [ -n "$EXTRA_ARGS" ]; then
@@ -199,6 +210,9 @@ Rules for the reply file:
 - This file gets sent directly to the user's phone"
                 fi
 
+                # Finalize GEMINI_ARGS now that TELEGRAM_PROMPT is built
+                GEMINI_ARGS+=("--yolo" "-p" "$TELEGRAM_PROMPT")
+
                 # Temporarily disable hooks (Gemini CLI bug workaround)
                 TARGET_SETTINGS="$ACTIVE_PROJECT/.gemini/settings.json"
                 SETTINGS_BACKED_UP=false
@@ -207,7 +221,8 @@ Rules for the reply file:
                     SETTINGS_BACKED_UP=true
                 fi
 
-                GEMINI_OUTPUT=$(gemini $MODEL_FLAG --yolo -p "$TELEGRAM_PROMPT" 2>>"$DOT_GEMINI/wa_session.log") || true
+                write_to_outbox "🧠 Running Gemini CLI..."
+                GEMINI_OUTPUT=$(gemini "${GEMINI_ARGS[@]}" 2>>"$DOT_GEMINI/wa_session.log") || true
 
                 # Restore hooks immediately
                 if [ "$SETTINGS_BACKED_UP" = true ] && [ -f "${TARGET_SETTINGS}.watcher-bak" ]; then
@@ -235,6 +250,7 @@ Rules for the reply file:
                         git add -A 2>/dev/null
                         git commit -m "telegram: session $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
                         echo "💾 Changes committed on: $ACTIVE_BRANCH" >&2
+                        write_to_outbox "💾 Changes committed"
                     else
                         echo "📭 No changes made" >&2
                     fi
@@ -244,6 +260,7 @@ Rules for the reply file:
                     if [ "$IS_SHUTDOWN" = true ]; then
                         git checkout -f main 2>/dev/null || true
                         echo "🏁 Session closed — branch '$ACTIVE_BRANCH' ready for review" >&2
+                        write_to_outbox "🏁 Session closed — branch ready for review"
                     fi
                 fi
 
