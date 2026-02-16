@@ -1,18 +1,24 @@
 # Active Context
 
+## Next Session Goal
+- [ ] Apply security fixes: CHAT_ID check on callback queries, quote `$MODEL_FLAG` in watcher.sh.
+
 ## Current Focus
-- [x] **Goal**: Set up project structure and create initial feature specification.
-- [x] **Mission**: Implement Hook Bridge & Sprint Mode (Completed).
-- [x] **Mission**: Multi-Project Support (Completed).
-- **Status**: Operational
+- [x] **Session 2026-02-16**: Conversation history refactor, model/project selection UI, security review, README rewrite, startup script.
+- **Status**: All features committed and tested. Security review complete with OpenClaw comparison.
 
 ## Recent Changes
-- Project created from Antigravity Template (2026-02-15).
-- Implemented full Remote Antigravity system with Telegram integration.
-- Added Multi-Project Support via wrapper scripts.
+- Replaced outbox-based history with file-based `session_history.txt` (2026-02-15).
+- Added `/model` command with inline keyboard for 4 Gemini models (2026-02-16).
+- Added `/project` command with inline keyboard for project switching (2026-02-16).
+- Conducted security review — documented in retrospective with OpenClaw.ai comparison (2026-02-16).
+- Rewrote README.md with full architecture, setup, and startup instructions (2026-02-16).
+- Created `start.sh` one-script launcher with start/stop/status (2026-02-16).
 
-## Active Issues / Questions
-- [x] Platform decision: WhatsApp vs Telegram — Selected Telegram (simpler API, no QR rot).
+## Lessons Learned
 
-## Next Session Goal
-- [ ] General maintenance and dogfooding.
+| # | Lesson |
+|---|--------|
+| 1 | Auth every Telegram handler — callback queries need CHAT_ID check too |
+| 2 | Use `readJsonSafe`/`atomicWrite` helpers, not raw `fs` calls in bot |
+| 3 | Quote all shell variables sourced from JSON files |

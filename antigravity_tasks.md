@@ -14,6 +14,8 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 ## In Progress
 
 ## To Do
+- [ ] [Security] [Bot] Add CHAT_ID check to callback_query handler [Difficulty: 1]
+- [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 
 ## Backlog
 
@@ -28,5 +30,11 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 - [x] [Research] [Platform] Evaluate Telegram vs WhatsApp for simplicity and reliability [Difficulty: 3] - COMPLETED 2026-02-15
 - [x] [Feature] [Multi-Project] Implement `/project`, `/add`, `/list` and `watcher.sh` context switching - COMPLETED 2026-02-15
 - [x] [Infra] [Hooks] Implement Wrapper Script strategy for spaced paths - COMPLETED 2026-02-15
+- [x] [Feature] [Watcher] File-based session history (`session_history.txt`) - COMPLETED 2026-02-16
+- [x] [Feature] [Bot] `/model` command with inline keyboard for model selection - COMPLETED 2026-02-16
+- [x] [Feature] [Bot] `/project` command with inline keyboard for project selection - COMPLETED 2026-02-16
+- [x] [Infra] `start.sh` one-script launcher with start/stop/status - COMPLETED 2026-02-16
+- [x] [Security] Security review with OpenClaw.ai comparison - COMPLETED 2026-02-16
+- [x] [Docs] README rewrite with architecture, commands, and startup instructions - COMPLETED 2026-02-16
 
 ## Deleted

@@ -22,3 +22,23 @@
 - **Decision**: Generate wrapper scripts in `~/.gemini/wa_bridge_wrappers/` for all hooks.
 - **Rationale**: Isolates the hook runner from space-containing paths. Standardizes execution environment without relying on symlinks (which are resolved eagerly).
 - **Consequences**: `setup_project.sh` must check/create `~/.gemini` directory structure. Hooks are indirect.
+
+## 005: File-Based Session History
+- **Context**: Injecting outbox history into prompts hit token limits and contaminated output.
+- **Decision**: Store conversation history in `.gemini/session_history.txt`, referenced by Gemini as a file.
+- **Rationale**: Decouples history from prompt engineering, supports longer conversations, Gemini reads the file itself.
+- **Consequences**: History file must be cleared on new branch creation. Added to `.gitignore`.
+
+## 006: Inline Keyboards for Model & Project Selection
+- **Context**: Typing exact model IDs and project names is error-prone on mobile.
+- **Decision**: Use Telegram inline keyboards with tap-to-select buttons for `/model` and `/project`.
+- **Rationale**: Better UX, no typos, shows current selection with ✅ indicator.
+- **Consequences**: Callback query handler needed — must include CHAT_ID auth check.
+
+## 007: Accept `--yolo` Risk for Personal Use
+- **Context**: Security review identified `--yolo` as auto-approving all Gemini tool calls.
+- **Decision**: Accept the risk for single-user personal use.
+- **Rationale**: Attack surface is limited to Telegram CHAT_ID compromise. No network exposure, no plugin marketplace, no multi-user auth.
+- **T&E**: [Security review retrospective](../docs/retrospectives/2026-02-16_telegram_bot_security_review.md)
+- **Key Lesson**: `--yolo` is a trust decision — acceptable for personal bots, never for shared/team setups.
+
