@@ -204,6 +204,13 @@ const PLATFORM_LABELS = {
 
 const TIER_EMOJI = { 'top': '🧠', 'mid': '⚡', 'free': '🆓' };
 
+// Planner suggestion: each tier maps to a default platform + model
+const TIER_DEFAULTS = {
+    'top': { platform: 'gemini', model: 'gemini-2.5-pro' },
+    'mid': { platform: 'gemini', model: 'gemini-2.5-flash' },
+    'free': { platform: 'gemini', model: 'gemini-2.0-flash-lite' }
+};
+
 // --- Execution Plan Helpers ---
 
 function loadExecutionPlan() {
@@ -220,12 +227,29 @@ function formatExecutionPlan(plan) {
     for (const t of plan.tasks) {
         const tierEmoji = TIER_EMOJI[t.tier] || '❓';
         const platform = t.platform ? PLATFORM_LABELS[t.platform] || t.platform : '—';
-        const model = t.model || (t.platform === 'jules' ? 'GitHub' : '—');
+        const modelEntry = PLATFORM_MODELS[t.platform]?.find(m => m.id === t.model);
+        const modelLabel = modelEntry ? modelEntry.label : (t.model || (t.platform === 'jules' ? 'GitHub' : '—'));
         const parallel = t.parallel ? '✅' : '❌';
         const deps = t.deps?.length ? `deps: ${t.deps.join(', ')}` : '';
-        lines.push(`${t.id}. ${t.description}  ${tierEmoji} ${platform}: ${model}  ∥${parallel} ${deps}`);
+        lines.push(`${t.id}. ${t.description}  ${tierEmoji} ${modelLabel}  ∥${parallel} ${deps}`);
     }
     return lines.join('\n');
+}
+
+/** Apply tier-based defaults to tasks that have no platform/model assigned */
+function applyTierDefaults(plan) {
+    let applied = false;
+    for (const t of plan.tasks) {
+        if (!t.platform && TIER_DEFAULTS[t.tier]) {
+            t.platform = TIER_DEFAULTS[t.tier].platform;
+            t.model = TIER_DEFAULTS[t.tier].model;
+            applied = true;
+        }
+    }
+    if (applied && !plan.defaultPlatform) {
+        plan.defaultPlatform = 'gemini';
+    }
+    return applied;
 }
 
 function writeDispatch(plan) {
@@ -285,20 +309,22 @@ bot.onText(/^\/plan$/, async (msg) => {
         return;
     }
 
-    // Start Step 1: Choose default platform
-    plan.status = 'selecting_platform';
+    // Apply tier-based defaults (planner suggestions) if tasks are unassigned
+    applyTierDefaults(plan);
+    plan.status = 'confirming';
     saveExecutionPlan(plan);
 
-    const platformButtons = Object.keys(PLATFORM_MODELS).map(p => ({
-        text: PLATFORM_LABELS[p] || p,
-        callback_data: `ep_platform:${p}`
-    }));
-
+    // Go straight to confirmation — 1-tap happy path
     await bot.sendMessage(CHAT_ID,
-        `📋 Execution Plan (${plan.tasks.length} tasks)\n\n` +
-        plan.tasks.map(t => `${t.id}. ${t.description}  ${TIER_EMOJI[t.tier] || '❓'}`).join('\n') +
-        '\n\nStep 1: Choose default platform:',
-        { reply_markup: { inline_keyboard: [platformButtons] } }
+        formatExecutionPlan(plan) + '\n\n💡 Suggested by planner based on task tier.',
+        {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🚀 Execute All', callback_data: 'ep_execute' }, { text: '✏️ Override Task', callback_data: 'ep_override' }],
+                    [{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]
+                ]
+            }
+        }
     );
 });
 
