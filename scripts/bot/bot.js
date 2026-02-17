@@ -8,7 +8,7 @@
 //   /sprint        — Start Sprint Mode
 //   /stop          — Send STOP signal
 //   /status        — Check status
-//   /plan          — Review & approve execution plan
+//   /review_plan   — Review & approve execution plan
 //   /project <name> — Switch active project
 //   /add <name> <path> — Register a new project
 //   /list          — List available projects
@@ -163,7 +163,7 @@ bot.onText(/^\/help/, async (msg) => {
         '/new — Archive branch, start fresh',
         '',
         '📋 Execution Plan:',
-        '/plan — Review & approve execution plan',
+        '/review_plan — Review & approve execution plan',
         '',
         '🔧 Bot Commands (instant):',
         '/status — System status',
@@ -211,6 +211,16 @@ const TIER_DEFAULTS = {
     'free': { platform: 'gemini', model: 'gemini-2.0-flash-lite' }
 };
 
+// Difficulty score → display label
+const DIFFICULTY_LABEL = (score) => {
+    if (!score) return '';
+    if (score <= 2) return '⭐ Trivial';
+    if (score <= 4) return '⭐⭐ Easy';
+    if (score <= 6) return '⭐⭐⭐ Moderate';
+    if (score <= 8) return '🔥 Hard';
+    return '💀 Expert';
+};
+
 // --- Execution Plan Helpers ---
 
 function loadExecutionPlan() {
@@ -226,12 +236,14 @@ function formatExecutionPlan(plan) {
     const lines = [`📋 Execution Plan (${plan.tasks.length} tasks)\n`];
     for (const t of plan.tasks) {
         const tierEmoji = TIER_EMOJI[t.tier] || '❓';
-        const platform = t.platform ? PLATFORM_LABELS[t.platform] || t.platform : '—';
         const modelEntry = PLATFORM_MODELS[t.platform]?.find(m => m.id === t.model);
         const modelLabel = modelEntry ? modelEntry.label : (t.model || (t.platform === 'jules' ? 'GitHub' : '—'));
-        const parallel = t.parallel ? '✅' : '❌';
-        const deps = t.deps?.length ? `deps: ${t.deps.join(', ')}` : '';
-        lines.push(`${t.id}. ${t.description}  ${tierEmoji} ${modelLabel}  ∥${parallel} ${deps}`);
+        const diff = t.difficulty ? `  ${DIFFICULTY_LABEL(t.difficulty)} (${t.difficulty}/10)` : '';
+        const deps = t.deps?.length ? `  deps: ${t.deps.join(', ')}` : '';
+        lines.push(`${t.id}. ${t.description}  ${tierEmoji} ${modelLabel}${diff}${deps}`);
+        if (t.summary) {
+            lines.push(`   → ${t.summary}`);
+        }
     }
     return lines.join('\n');
 }
@@ -284,14 +296,14 @@ bot.onText(/^\/model$/, async (msg) => {
     });
 });
 
-// --- /plan Command: Start Execution Plan Approval ---
+// --- /review_plan Command: Start Execution Plan Approval ---
 
-bot.onText(/^\/plan$/, async (msg) => {
+bot.onText(/^\/review_plan$/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     const plan = loadExecutionPlan();
 
     if (!plan || !plan.tasks?.length) {
-        await bot.sendMessage(CHAT_ID, '📋 No execution plan found.\n\nRun /plan_feature first — the architect will generate a plan and save it to state.json.');
+        await bot.sendMessage(CHAT_ID, '📋 No execution plan found.\n\nRun /plan_feature first — the architect will generate a plan and save it to state.json.\nThe plan will appear here automatically when ready.');
         return;
     }
 
@@ -435,21 +447,63 @@ bot.on('callback_query', async (query) => {
             }
         );
 
-        // --- Execution Plan: Execute All ---
+        // --- Execution Plan: Execute All (manual step-through) ---
     } else if (query.data === 'ep_execute') {
         const plan = loadExecutionPlan();
         if (!plan) return;
 
         plan.status = 'approved';
+        // Mark all tasks as pending
+        plan.tasks.forEach(t => { if (!t.taskStatus) t.taskStatus = 'pending'; });
         saveExecutionPlan(plan);
         writeDispatch(plan);
 
         await bot.answerCallbackQuery(query.id, { text: '🚀 Plan approved!' });
         await bot.editMessageText(
-            `🚀 Plan Approved!\n\n${formatExecutionPlan(plan)}\n\nThe watcher will dispatch tasks automatically.`,
+            `🚀 Plan Approved! (Step-through mode)\n\n${formatExecutionPlan(plan)}\n\n⏳ Watcher will run Task 1, then pause for your review.`,
             { chat_id: chatId, message_id: msgId }
         );
-        console.log(`🚀 ${new Date().toISOString()} | Execution plan approved (${plan.tasks.length} tasks)`);
+        console.log(`🚀 ${new Date().toISOString()} | Execution plan approved (${plan.tasks.length} tasks, step-through)`);
+
+        // --- Execution Plan: Continue to next task ---
+    } else if (query.data === 'ep_continue') {
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        // Signal watcher to proceed: write continue file
+        const continueFile = resolve(CENTRAL_DIR, 'wa_dispatch_continue.json');
+        atomicWrite(continueFile, { timestamp: new Date().toISOString(), action: 'continue' });
+
+        await bot.answerCallbackQuery(query.id, { text: '▶️ Continuing...' });
+        await bot.editMessageText(
+            `▶️ Continuing execution...\n\n${formatExecutionPlan(plan)}`,
+            { chat_id: chatId, message_id: msgId }
+        );
+        console.log(`▶️ ${new Date().toISOString()} | Step-through: continue to next task`);
+
+        // --- Execution Plan: Stop execution ---
+    } else if (query.data === 'ep_stop') {
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        plan.status = 'stopped';
+        saveExecutionPlan(plan);
+        // Clean up dispatch
+        if (existsSync(DISPATCH_FILE)) {
+            try { unlinkSync(DISPATCH_FILE); } catch { /* ignore */ }
+        }
+
+        await bot.answerCallbackQuery(query.id, { text: '🛑 Stopped' });
+        await bot.editMessageText(
+            `🛑 Execution stopped.\n\n${formatExecutionPlan(plan)}\n\nUse /review_plan to restart or 🔄 Re-plan.`,
+            {
+                chat_id: chatId, message_id: msgId,
+                reply_markup: {
+                    inline_keyboard: [[{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]]
+                }
+            }
+        );
+        console.log(`🛑 ${new Date().toISOString()} | Execution stopped`);
 
         // --- Execution Plan: Override — show task list ---
     } else if (query.data === 'ep_override') {
@@ -581,7 +635,7 @@ bot.on('callback_query', async (query) => {
 
         await bot.answerCallbackQuery(query.id, { text: 'Plan cleared' });
         await bot.editMessageText(
-            '🔄 Execution plan cleared.\n\nRun /plan_feature to generate a new plan.',
+            '🔄 Execution plan cleared.\n\nRun /plan_feature to generate a new plan.\nIt will appear here automatically when ready.',
             { chat_id: chatId, message_id: msgId }
         );
         console.log(`🔄 ${new Date().toISOString()} | Execution plan cleared`);
@@ -706,7 +760,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint', '/plan', '/clear_lock'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint', '/review_plan', '/clear_lock'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
@@ -839,7 +893,41 @@ async function sendAsFile(text) {
     }
 }
 
+// Track whether we've already shown the auto-trigger for this plan
+let lastAutoTriggerPlanStatus = null;
+
 setInterval(async () => {
+    // --- Auto-trigger: check for pending execution plans ---
+    try {
+        const plan = loadExecutionPlan();
+        if (plan && plan.status === 'pending_approval' && plan.tasks?.length && lastAutoTriggerPlanStatus !== 'pending_approval') {
+            lastAutoTriggerPlanStatus = 'pending_approval';
+            // Apply tier defaults and show confirmation
+            applyTierDefaults(plan);
+            plan.status = 'confirming';
+            saveExecutionPlan(plan);
+
+            await bot.sendMessage(CHAT_ID,
+                '📋 New execution plan ready!\n\n' +
+                formatExecutionPlan(plan) + '\n\n💡 Suggested by planner based on task tier.',
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🚀 Execute All', callback_data: 'ep_execute' }, { text: '✏️ Override Task', callback_data: 'ep_override' }],
+                            [{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]
+                        ]
+                    }
+                }
+            );
+            console.log(`📋 ${new Date().toISOString()} | Auto-triggered execution plan review`);
+        } else if (!plan || !plan.tasks?.length) {
+            lastAutoTriggerPlanStatus = null; // Reset when plan is cleared
+        }
+    } catch (err) {
+        console.error(`Auto-trigger check error: ${err.message}`);
+    }
+
+    // --- Outbox relay ---
     if (!existsSync(OUTBOX)) return;
 
     const outbox = readJsonSafe(OUTBOX, { messages: [] });

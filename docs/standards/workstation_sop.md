@@ -216,6 +216,8 @@ You operate primarily in **DEEP WORK MODE**.
         - **Scope Boundary:** files to modify and files NOT to touch
         - **Acceptance:** specific test command
         - **Tier:** 🧠 Top | ⚡ Mid | 🆓 Free
+        - **Difficulty:** 1–10 score
+        - **Summary:** 1-sentence layman-friendly description
     4.  **Dependency Graph**: Explicit task dependencies (which can run in parallel).
     5.  **Execution Plan Summary**: Table of tasks with tiers, parallelism, and deps.
     > [!IMPORTANT]
@@ -224,7 +226,8 @@ You operate primarily in **DEEP WORK MODE**.
 
 ## 4. Approval Gate (Hard Gate)
 - **No tasks execute until the user approves the Execution Plan.**
-- On Telegram: Default + Override button flow (choose platform → model → confirm).
+- On Telegram: The plan auto-triggers when ready. Users tap 🚀 Execute All, ✏️ Override Task, or 🔄 Re-plan. Can also use `/review_plan` manually.
+- **Step-Through Execution**: After approval, tasks run one at a time. After each, the user taps ▶️ Next Task or 🛑 Stop.
 - In IDE: User reviews and invokes `/implement_task` per task sequentially.
 
 ## 5. The Jules Protocol (Delegation)
@@ -379,4 +382,4 @@ These rules are enforced by the workflows themselves. They are listed here for q
 **Convergence**: Auditor merges Jules's PRs and validates local code.
 
 ---
-> **Document Version**: 3.0 | **Last Updated**: 2026-02-17 | **Change**: Builder-Ready Output Standard — work orders, execution guards, approval gate, tier recommendations.
+> **Document Version**: 3.1 | **Last Updated**: 2026-02-17 | **Change**: /review_plan (renamed from /plan), Summary & Difficulty in work orders, step-through execution, auto-trigger for pending plans.
