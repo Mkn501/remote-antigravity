@@ -297,7 +297,13 @@ Rules for the reply file:
                 fi
 
                 # Finalize GEMINI_ARGS now that TELEGRAM_PROMPT is built
-                GEMINI_ARGS+=("--yolo" "-p" "$TELEGRAM_PROMPT")
+                # Plan refinements: NO --yolo (prevents silent code writes)
+                if [ "$IS_PLAN_FEATURE" = true ] && ! echo "$USER_MESSAGES" | grep -qi "^/plan_feature\|^/plan "; then
+                    echo "🔒 Plan refinement: --yolo disabled (spec-only mode)" >&2
+                    GEMINI_ARGS+=("-p" "$TELEGRAM_PROMPT")
+                else
+                    GEMINI_ARGS+=("--yolo" "-p" "$TELEGRAM_PROMPT")
+                fi
 
                 # Temporarily disable hooks (Gemini CLI bug workaround)
                 TARGET_SETTINGS="$ACTIVE_PROJECT/.gemini/settings.json"
@@ -405,9 +411,10 @@ Rules for the reply file:
                             echo "📎 Spec file queued: $SPEC_FILE" >&2
                         fi
 
-                        # Auto-load execution plan from antigravity_tasks.md
+                        # Auto-load execution plan from antigravity_tasks.md (only if no plan exists yet)
                         TASKS_FILE="$ACTIVE_PROJECT/antigravity_tasks.md"
-                        if [ -f "$TASKS_FILE" ] && [ -n "$SPEC_FILE" ]; then
+                        PLAN_EXISTS=$(python3 -c "import json; s=json.load(open('$ACTIVE_PROJECT/.gemini/state.json')); print('yes' if s.get('executionPlan',{}).get('status') else 'no')" 2>/dev/null || echo "no")
+                        if [ -f "$TASKS_FILE" ] && [ -n "$SPEC_FILE" ] && [ "$PLAN_EXISTS" = "no" ]; then
                             python3 -c "
 import json, re, sys
 
