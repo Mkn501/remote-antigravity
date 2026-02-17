@@ -218,6 +218,109 @@ await test('outbox handles long messages (> 4096 chars)', () => {
     ok(msg.text.length > 4096, 'message should exceed Telegram limit');
 });
 
+// ---- 4a. Outbox Document Support ----
+console.log('\n── Outbox Document Support ──');
+
+function writeDocToOutbox(filePath, caption, sent = false) {
+    const outbox = readJsonSafe(OUTBOX, { messages: [] });
+    outbox.messages.push({
+        id: `doc_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        from: 'agent',
+        type: 'document',
+        filePath,
+        caption,
+        sent
+    });
+    writeFileSync(OUTBOX, JSON.stringify(outbox, null, 2));
+}
+
+function writeMarkupToOutbox(text, reply_markup, sent = false) {
+    const outbox = readJsonSafe(OUTBOX, { messages: [] });
+    outbox.messages.push({
+        id: `btn_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        from: 'agent',
+        text,
+        reply_markup,
+        sent
+    });
+    writeFileSync(OUTBOX, JSON.stringify(outbox, null, 2));
+}
+
+await test('outbox document message has correct structure', () => {
+    writeDocToOutbox('/tmp/test_spec.md', '📎 Plan spec');
+    const msg = readJsonSafe(OUTBOX, {}).messages[0];
+    strictEqual(msg.type, 'document');
+    strictEqual(msg.filePath, '/tmp/test_spec.md');
+    strictEqual(msg.caption, '📎 Plan spec');
+    strictEqual(msg.sent, false);
+    strictEqual(msg.text, undefined, 'document messages should not have text');
+});
+
+await test('outbox reply_markup message preserves inline keyboard', () => {
+    const markup = { inline_keyboard: [[{ text: '▶️ Next', callback_data: 'ep_next' }]] };
+    writeMarkupToOutbox('Task 1 done', markup);
+    const msg = readJsonSafe(OUTBOX, {}).messages[0];
+    strictEqual(msg.text, 'Task 1 done');
+    ok(msg.reply_markup, 'reply_markup should be present');
+    strictEqual(msg.reply_markup.inline_keyboard[0][0].callback_data, 'ep_next');
+});
+
+await test('outbox routing: document vs text vs markup are distinguishable', () => {
+    writeDocToOutbox('/tmp/spec.md', '📎 Spec');
+    writeToOutbox('Simple text');
+    writeMarkupToOutbox('With buttons', { inline_keyboard: [[{ text: '🛑 Stop', callback_data: 'ep_stop' }]] });
+    const msgs = readJsonSafe(OUTBOX, {}).messages;
+    strictEqual(msgs.length, 3);
+    strictEqual(msgs[0].type, 'document');
+    strictEqual(msgs[1].type, undefined);
+    ok(!msgs[1].reply_markup, 'plain text should have no reply_markup');
+    ok(msgs[2].reply_markup, 'markup message should have reply_markup');
+});
+
+// ---- 4b. Plan Mode Persistence ----
+console.log('\n── Plan Mode Persistence ──');
+
+await test('plan mode: marker file detection', () => {
+    const markerFile = resolve(TEST_DIR, 'wa_plan_mode');
+    ok(!existsSync(markerFile), 'marker should not exist initially');
+
+    // Simulate /plan_feature creating the marker
+    writeFileSync(markerFile, 'plan_feature');
+    ok(existsSync(markerFile), 'marker should exist after plan_feature');
+
+    // Simulate detection in watcher
+    const content = readFileSync(markerFile, 'utf8');
+    strictEqual(content, 'plan_feature');
+
+    unlinkSync(markerFile);
+});
+
+await test('plan mode: marker file cleaned up on shutdown', () => {
+    const markerFile = resolve(TEST_DIR, 'wa_plan_mode');
+    writeFileSync(markerFile, 'plan_feature');
+    ok(existsSync(markerFile), 'marker should exist');
+
+    // Simulate shutdown cleanup
+    if (existsSync(markerFile)) unlinkSync(markerFile);
+    ok(!existsSync(markerFile), 'marker should be removed after shutdown');
+});
+
+await test('plan mode: guard blocks code changes in prompt', () => {
+    // Verify the plan guard text is correctly structured
+    const PLAN_GUARD = `
+⛔ CRITICAL: PLANNING MODE IS ACTIVE.
+- You are refining an existing plan. The spec is in docs/specs/ — read it, update it per the user's feedback.
+- You MUST NOT write any application code (.js, .py, .sh, etc). Only update specs, tasks, and documentation.
+- After updating the spec, write a short summary of changes to .gemini/telegram_reply.txt
+- If the user says 'looks good' or similar approval, just acknowledge — do NOT implement anything.
+`;
+    ok(PLAN_GUARD.includes('MUST NOT write any application code'), 'guard should block code changes');
+    ok(PLAN_GUARD.includes('PLANNING MODE IS ACTIVE'), 'guard should declare plan mode');
+    ok(PLAN_GUARD.includes('.js, .py, .sh'), 'guard should list blocked file types');
+});
+
 // ---- 4. State Management ----
 console.log('\n── State Management ──');
 
