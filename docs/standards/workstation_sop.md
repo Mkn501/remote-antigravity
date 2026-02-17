@@ -379,4 +379,4 @@ These rules are enforced by the workflows themselves. They are listed here for q
 **Convergence**: Auditor merges Jules's PRs and validates local code.
 
 ---
-> **Document Version**: 3.0 | **Last Updated**: 2026-02-17 | **Change**: Builder-Ready Output Standard — work orders, execution guards, approval gate, tier recommendations.
+> **Document Version**: 3.1 | **Last Updated**: 2026-02-17 | **Change**: /review_plan (renamed from /plan), Summary & Difficulty in work orders, step-through execution, auto-trigger for pending plans.
