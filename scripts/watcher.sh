@@ -25,6 +25,7 @@ LOCK_FILE="$DOT_GEMINI/wa_session.lock"
 
 POLL_INTERVAL=3
 COOLDOWN=10
+DEFAULT_MODEL="gemini-3-pro-preview"  # CLI shorthand: gemini-3-pro
 
 echo "👁️  Inbox watcher started"
 echo "   HQ:      $CENTRAL_PROJECT_DIR"
@@ -78,9 +79,8 @@ while true; do
             fi
 
             GEMINI_ARGS=()
-            if [ -n "$SELECTED_MODEL" ]; then
-                GEMINI_ARGS+=("--model" "$SELECTED_MODEL")
-            fi
+            ACTIVE_MODEL="${SELECTED_MODEL:-$DEFAULT_MODEL}"
+            GEMINI_ARGS+=("--model" "$ACTIVE_MODEL")
 
             # Extract unread message text BEFORE marking as read
             # (Since hooks are disabled, we inject messages directly into the prompt)
@@ -225,8 +225,17 @@ Rules for the reply file:
                     SETTINGS_BACKED_UP=true
                 fi
 
-                write_to_outbox "🧠 Running Gemini CLI..."
-                GEMINI_OUTPUT=$(gemini "${GEMINI_ARGS[@]}" 2>>"$DOT_GEMINI/wa_session.log") || true
+                write_to_outbox "🧠 Running $ACTIVE_MODEL..."
+                GEMINI_STDERR=$(mktemp)
+                GEMINI_OUTPUT=$(gemini "${GEMINI_ARGS[@]}" 2> >(tee -a "$DOT_GEMINI/wa_session.log" > "$GEMINI_STDERR")) || true
+
+                # Detect rate limit / quota errors
+                STDERR_CONTENT=$(cat "$GEMINI_STDERR" 2>/dev/null || echo "")
+                rm -f "$GEMINI_STDERR"
+                if echo "$STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
+                    write_to_outbox "⚠️ Rate limit hit on $ACTIVE_MODEL. Try again in a few minutes or switch model with /model."
+                    echo "⚠️  Rate limit detected for $ACTIVE_MODEL" >&2
+                fi
 
                 # Restore hooks immediately
                 if [ "$SETTINGS_BACKED_UP" = true ] && [ -f "${TARGET_SETTINGS}.watcher-bak" ]; then
