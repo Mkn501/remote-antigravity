@@ -78,10 +78,6 @@ while true; do
                  SELECTED_MODEL=""
             fi
 
-            GEMINI_ARGS=()
-            ACTIVE_MODEL="${SELECTED_MODEL:-$DEFAULT_MODEL}"
-            GEMINI_ARGS+=("--model" "$ACTIVE_MODEL")
-
             # Extract unread message text BEFORE marking as read
             # (Since hooks are disabled, we inject messages directly into the prompt)
             USER_MESSAGES=$(jq -r '[.messages[] | select(.read == false) | .text] | join("\n")' "$INBOX" 2>/dev/null || echo "")
@@ -99,6 +95,20 @@ while true; do
             if echo "$USER_MESSAGES" | grep -qi "^/shutdown"; then
                 IS_SHUTDOWN=true  # /shutdown archives branch after running
             fi
+
+            # Tiered model routing: Flash for routine workflows, default for everything else
+            ROUTINE_MODEL="gemini-2.5-flash"
+            GEMINI_ARGS=()
+            case "$USER_MESSAGES" in
+                /startup*|/shutdown*)
+                    ACTIVE_MODEL="$ROUTINE_MODEL"
+                    echo "⚡ Using $ROUTINE_MODEL for routine workflow" >&2
+                    ;;
+                *)
+                    ACTIVE_MODEL="${SELECTED_MODEL:-$DEFAULT_MODEL}"
+                    ;;
+            esac
+            GEMINI_ARGS+=("--model" "$ACTIVE_MODEL")
 
             # Mark messages as read
             jq '.messages[] |= (if .read == false then .read = true else . end)' "$INBOX" > "${INBOX}.tmp" && mv "${INBOX}.tmp" "$INBOX"
