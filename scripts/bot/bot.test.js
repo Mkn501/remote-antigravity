@@ -908,6 +908,438 @@ await test('execution plan: formatExecutionPlan graceful without summary/difficu
     ok(!text.includes('/10'), 'should not show difficulty when missing');
 });
 
+// ---- 13. Plan-Review-Execute Flow (Mock) ----
+// Simulates the complete plan flow without calling Gemini CLI.
+// Each test recreates what watcher.sh does in a controlled sandbox.
+console.log('\n── Plan-Review-Execute Flow (Mock) ──');
+
+// Sandbox directories for mock flow
+const MOCK_PROJECT = resolve(TEST_DIR, 'mock_project');
+const MOCK_GEMINI = resolve(MOCK_PROJECT, '.gemini');
+const MOCK_SPECS = resolve(MOCK_PROJECT, 'docs', 'specs');
+const MOCK_SCRIPTS = resolve(MOCK_PROJECT, 'scripts');
+const MOCK_STATE = resolve(MOCK_GEMINI, 'state.json');
+const MOCK_DISPATCH = resolve(MOCK_GEMINI, 'wa_dispatch.json');
+const MOCK_PLAN_MODE = resolve(MOCK_GEMINI, 'wa_plan_mode');
+
+function mockSetup() {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+    mkdirSync(MOCK_GEMINI, { recursive: true });
+    mkdirSync(MOCK_SPECS, { recursive: true });
+    mkdirSync(MOCK_SCRIPTS, { recursive: true });
+    writeFileSync(MOCK_STATE, JSON.stringify({}, null, 2));
+}
+
+// --- 13a. Plan Mode Marker Lifecycle ---
+
+await test('mock flow: /plan_feature sets marker + clears stale dispatch', () => {
+    mockSetup();
+    // Simulate stale state from previous session
+    writeFileSync(MOCK_STATE, JSON.stringify({
+        executionPlan: { status: 'approved', tasks: [{ id: 1, description: 'Old task' }] }
+    }, null, 2));
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({ status: 'approved', tasks: [] }, null, 2));
+
+    // Simulate: /plan_feature creates new branch → set marker + clear stale
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+    // Clear stale dispatch (what watcher does)
+    if (existsSync(MOCK_DISPATCH)) unlinkSync(MOCK_DISPATCH);
+    const state = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    delete state.executionPlan;
+    writeFileSync(MOCK_STATE, JSON.stringify(state, null, 2));
+
+    ok(existsSync(MOCK_PLAN_MODE), 'plan mode marker should exist');
+    ok(!existsSync(MOCK_DISPATCH), 'stale dispatch should be deleted');
+    const cleanState = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    strictEqual(cleanState.executionPlan, undefined, 'stale execution plan should be removed');
+});
+
+await test('mock flow: refinement detects plan mode from marker', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    // Simulate: watcher checks for plan mode on follow-up message
+    const isPlanMode = existsSync(MOCK_PLAN_MODE);
+    ok(isPlanMode, 'plan mode should be detected from marker file');
+
+    // Read marker content
+    const content = readFileSync(MOCK_PLAN_MODE, 'utf8').trim();
+    strictEqual(content, 'plan_feature', 'marker should contain workflow name');
+});
+
+// --- 13b. Gemini Response Mock: Code File Revert ---
+
+await test('mock flow: code files reverted after Gemini writes them in plan mode', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    // Simulate: Gemini CLI writes a spec file (allowed) AND a code file (blocked)
+    const specFile = resolve(MOCK_SPECS, 'test_version_spec.md');
+    writeFileSync(specFile, '# Test Spec\n## Overview\nTest plan content');
+    const codeFile = resolve(MOCK_SCRIPTS, 'bot.js');
+    writeFileSync(codeFile, 'console.log("unauthorized code change");');
+
+    // Simulate: watcher plan mode enforcement — revert code files
+    const isPlanMode = existsSync(MOCK_PLAN_MODE);
+    if (isPlanMode) {
+        const codeExtensions = ['.js', '.py', '.sh', '.ts', '.css', '.html'];
+        // Scan for code files that were modified (simulate git diff)
+        const modifiedFiles = [codeFile]; // would come from git diff
+        for (const f of modifiedFiles) {
+            const ext = f.substring(f.lastIndexOf('.'));
+            if (codeExtensions.includes(ext)) {
+                unlinkSync(f); // simulate git checkout HEAD -- <file>
+            }
+        }
+    }
+
+    ok(existsSync(specFile), 'spec file should survive revert');
+    ok(!existsSync(codeFile), 'code file should be reverted');
+});
+
+await test('mock flow: multiple code file types are all reverted', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    // Simulate: Gemini writes multiple code file types
+    const files = {
+        [resolve(MOCK_SCRIPTS, 'app.js')]: 'js code',
+        [resolve(MOCK_SCRIPTS, 'helper.py')]: 'py code',
+        [resolve(MOCK_SCRIPTS, 'deploy.sh')]: 'sh code',
+        [resolve(MOCK_SCRIPTS, 'types.ts')]: 'ts code',
+        [resolve(MOCK_SCRIPTS, 'style.css')]: 'css code',
+        [resolve(MOCK_SCRIPTS, 'index.html')]: 'html code',
+        [resolve(MOCK_SPECS, 'plan.md')]: 'spec content',      // allowed
+        [resolve(MOCK_PROJECT, 'antigravity_tasks.md')]: 'tasks' // allowed
+    };
+    for (const [path, content] of Object.entries(files)) {
+        writeFileSync(path, content);
+    }
+
+    // Simulate: watcher revert
+    const codeExtensions = ['.js', '.py', '.sh', '.ts', '.css', '.html'];
+    const reverted = [];
+    for (const f of Object.keys(files)) {
+        const ext = f.substring(f.lastIndexOf('.'));
+        if (codeExtensions.includes(ext)) {
+            unlinkSync(f);
+            reverted.push(f);
+        }
+    }
+
+    strictEqual(reverted.length, 6, 'all 6 code file types should be reverted');
+    ok(existsSync(resolve(MOCK_SPECS, 'plan.md')), '.md spec should survive');
+    ok(existsSync(resolve(MOCK_PROJECT, 'antigravity_tasks.md')), '.md tasks should survive');
+});
+
+await test('mock flow: no revert when plan mode is NOT active', () => {
+    mockSetup();
+    // NO plan mode marker
+
+    const codeFile = resolve(MOCK_SCRIPTS, 'bot.js');
+    writeFileSync(codeFile, 'console.log("authorized change");');
+
+    const isPlanMode = existsSync(MOCK_PLAN_MODE);
+    strictEqual(isPlanMode, false, 'plan mode should not be active');
+
+    // Code file should NOT be reverted
+    ok(existsSync(codeFile), 'code file should survive when plan mode is off');
+});
+
+// --- 13c. Spec File Handling ---
+
+await test('mock flow: spec file copied as .txt for Telegram', () => {
+    mockSetup();
+    const specMd = resolve(MOCK_SPECS, 'telegram_version_command_spec.md');
+    writeFileSync(specMd, '# /version Command Spec\n## Task 1\nImplement command handler');
+
+    // Simulate: watcher copies .md → .txt
+    const basename = 'telegram_version_command_spec';
+    const specTxt = resolve(tmpdir(), `${basename}.txt`);
+    const content = readFileSync(specMd, 'utf8');
+    writeFileSync(specTxt, content);
+
+    ok(existsSync(specTxt), '.txt copy should exist');
+    strictEqual(readFileSync(specTxt, 'utf8'), content, '.txt content should match .md');
+    ok(specTxt.endsWith('.txt'), 'file should have .txt extension');
+
+    unlinkSync(specTxt);
+});
+
+// --- 13d. Execution Plan Auto-Loading ---
+
+await test('mock flow: execution plan loaded from antigravity_tasks.md', () => {
+    mockSetup();
+    const tasksFile = resolve(MOCK_PROJECT, 'antigravity_tasks.md');
+    writeFileSync(tasksFile, `## To Do
+<!-- task_schema: cat/topic | description | difficulty/10 -->
+- [ ] feature/version | Add /version command handler | 4/10
+- [ ] feature/version | Add unit tests for /version | 3/10
+`);
+
+    // Simulate: watcher parses tasks and writes plan
+    const taskRegex = /^- \[ \] (\w+\/\w+) \| (.+?) \| (\d+)\/10$/gm;
+    const tasks = [];
+    let match;
+    while ((match = taskRegex.exec(readFileSync(tasksFile, 'utf8'))) !== null) {
+        tasks.push({
+            id: tasks.length + 1,
+            description: match[2].trim(),
+            summary: match[1],
+            difficulty: parseInt(match[3]),
+            tier: parseInt(match[3]) <= 5 ? 'mid' : 'top',
+            platform: 'gemini',
+            model: 'gemini-2.5-flash',
+            status: 'pending'
+        });
+    }
+
+    const plan = { status: 'pending_review', tasks };
+    const state = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    state.executionPlan = plan;
+    writeFileSync(MOCK_STATE, JSON.stringify(state, null, 2));
+
+    const loaded = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    strictEqual(loaded.executionPlan.status, 'pending_review');
+    strictEqual(loaded.executionPlan.tasks.length, 2);
+    strictEqual(loaded.executionPlan.tasks[0].description, 'Add /version command handler');
+    strictEqual(loaded.executionPlan.tasks[1].difficulty, 3);
+});
+
+await test('mock flow: initial /plan_feature always reloads plan (replaces stale)', () => {
+    mockSetup();
+    // Simulate: stale plan from previous session
+    const staleState = { executionPlan: { status: 'approved', tasks: [{ id: 1, description: 'old' }] } };
+    writeFileSync(MOCK_STATE, JSON.stringify(staleState, null, 2));
+
+    // Simulate: watcher detects /plan_feature → IS_INITIAL_PLAN=yes → always reload
+    const userMessage = '/plan_feature add a /version command';
+    const isInitialPlan = /^\/plan_feature|^\/plan /i.test(userMessage);
+    ok(isInitialPlan, '/plan_feature should be detected as initial plan');
+
+    // Overwrite stale plan
+    const newPlan = { status: 'pending_review', tasks: [{ id: 1, description: 'New task' }, { id: 2, description: 'Another task' }] };
+    const state = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    state.executionPlan = newPlan;
+    writeFileSync(MOCK_STATE, JSON.stringify(state, null, 2));
+
+    const loaded = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    strictEqual(loaded.executionPlan.status, 'pending_review', 'plan should be pending_review');
+    strictEqual(loaded.executionPlan.tasks.length, 2, 'stale plan should be replaced');
+    strictEqual(loaded.executionPlan.tasks[0].description, 'New task');
+});
+
+await test('mock flow: refinement skips plan reload when plan exists', () => {
+    mockSetup();
+    const existingPlan = { status: 'pending_review', tasks: [{ id: 1, description: 'Existing task' }] };
+    writeFileSync(MOCK_STATE, JSON.stringify({ executionPlan: existingPlan }, null, 2));
+
+    const userMessage = 'remove the test section from the plan';
+    const isInitialPlan = /^\/plan_feature|^\/plan /i.test(userMessage);
+    ok(!isInitialPlan, 'plain text should NOT be initial plan');
+
+    const planExists = JSON.parse(readFileSync(MOCK_STATE, 'utf8')).executionPlan?.status ? true : false;
+    ok(planExists, 'plan should already exist');
+
+    // Refinement should NOT reload plan
+    const shouldLoad = isInitialPlan || !planExists;
+    ok(!shouldLoad, 'should NOT reload plan on refinement when plan exists');
+});
+
+// --- 13e. Dispatch Blocking During Plan Mode ---
+
+await test('mock flow: dispatch blocked when plan mode marker exists', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({
+        status: 'approved',
+        tasks: [{ id: 1, description: 'Task 1', platform: 'gemini', model: 'gemini-2.5-pro', taskStatus: 'pending' }]
+    }, null, 2));
+
+    // Simulate: watcher dispatch loop checks plan mode
+    const isPlanMode = existsSync(MOCK_PLAN_MODE);
+    let dispatched = false;
+    if (!isPlanMode) {
+        const dispatch = JSON.parse(readFileSync(MOCK_DISPATCH, 'utf8'));
+        if (dispatch.status === 'approved') {
+            dispatched = true;
+        }
+    }
+
+    ok(!dispatched, 'dispatch should be blocked while plan mode is active');
+});
+
+await test('mock flow: dispatch allowed after plan mode marker removed', () => {
+    mockSetup();
+    // No plan mode marker
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({
+        status: 'approved',
+        tasks: [{ id: 1, description: 'Task 1', platform: 'gemini', model: 'gemini-2.5-pro', taskStatus: 'pending' }]
+    }, null, 2));
+
+    const isPlanMode = existsSync(MOCK_PLAN_MODE);
+    let dispatched = false;
+    if (!isPlanMode) {
+        const dispatch = JSON.parse(readFileSync(MOCK_DISPATCH, 'utf8'));
+        if (dispatch.status === 'approved') {
+            dispatched = true;
+        }
+    }
+
+    ok(dispatched, 'dispatch should proceed when plan mode is off');
+});
+
+// --- 13f. /review_plan Button Logic ---
+
+await test('mock flow: pending_review plan shows full button set', () => {
+    mockSetup();
+    const plan = {
+        status: 'pending_review',
+        tasks: [
+            { id: 1, description: 'Add /version handler', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash', deps: [] },
+            { id: 2, description: 'Add tests', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash', deps: [1] }
+        ]
+    };
+
+    // Simulate: /review_plan handler logic
+    let buttonsShown = [];
+    if (plan.status === 'approved') {
+        buttonsShown = ['Re-plan'];
+    } else if (plan.status === 'executing') {
+        buttonsShown = [];
+    } else {
+        // pending_review or confirming → full button set
+        plan.status = 'confirming';
+        buttonsShown = ['Execute All', 'Override Task', 'Re-plan'];
+    }
+
+    deepStrictEqual(buttonsShown, ['Execute All', 'Override Task', 'Re-plan'], 'pending_review should show all 3 buttons');
+    strictEqual(plan.status, 'confirming', 'status should transition to confirming');
+});
+
+await test('mock flow: approved plan shows only Re-plan button', () => {
+    mockSetup();
+    const plan = { status: 'approved', tasks: [{ id: 1, description: 'Task' }] };
+
+    let buttonsShown = [];
+    if (plan.status === 'approved') {
+        buttonsShown = ['Re-plan'];
+    } else {
+        buttonsShown = ['Execute All', 'Override Task', 'Re-plan'];
+    }
+
+    deepStrictEqual(buttonsShown, ['Re-plan'], 'approved plan should only show Re-plan');
+});
+
+// --- 13g. Full Flow Simulation ---
+
+await test('mock flow: complete plan → refine → review → execute lifecycle', () => {
+    mockSetup();
+
+    // STEP 1: /plan_feature arrives
+    const userMsg1 = '/plan_feature add /version command';
+    ok(/^\/plan_feature/i.test(userMsg1), 'step 1: command detected');
+
+    // Create branch, set marker, clear stale
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+    if (existsSync(MOCK_DISPATCH)) unlinkSync(MOCK_DISPATCH);
+
+    // Gemini CLI generates spec
+    const specFile = resolve(MOCK_SPECS, 'version_command_spec.md');
+    writeFileSync(specFile, '# /version Command\n## Tasks\n1. Add handler\n2. Add tests');
+
+    // Auto-load plan
+    const plan = {
+        status: 'pending_review',
+        tasks: [
+            { id: 1, description: 'Add /version handler', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash', deps: [], taskStatus: 'pending' },
+            { id: 2, description: 'Add tests', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash', deps: [1], taskStatus: 'pending' }
+        ]
+    };
+    writeFileSync(MOCK_STATE, JSON.stringify({ executionPlan: plan }, null, 2));
+
+    // Verify step 1
+    ok(existsSync(MOCK_PLAN_MODE), 'step 1: marker set');
+    ok(!existsSync(MOCK_DISPATCH), 'step 1: no dispatch');
+    const s1 = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    strictEqual(s1.executionPlan.status, 'pending_review', 'step 1: status = pending_review');
+
+    // STEP 2: Refinement arrives
+    const userMsg2 = 'remove the test section';
+    ok(!/^\/plan_feature/i.test(userMsg2), 'step 2: not a slash command');
+    ok(existsSync(MOCK_PLAN_MODE), 'step 2: plan mode still active');
+
+    // Gemini updates spec (allowed) and tries to write code (blocked)
+    writeFileSync(specFile, '# /version Command\n## Tasks\n1. Add handler');
+    const badCode = resolve(MOCK_SCRIPTS, 'version.js');
+    writeFileSync(badCode, 'module.exports = {}');
+
+    // Code revert
+    if (existsSync(MOCK_PLAN_MODE)) {
+        if (existsSync(badCode)) unlinkSync(badCode);
+    }
+
+    ok(existsSync(specFile), 'step 2: spec updated and preserved');
+    ok(!existsSync(badCode), 'step 2: code file reverted');
+
+    // STEP 3: /review_plan
+    const s3 = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    strictEqual(s3.executionPlan.status, 'pending_review', 'step 3: still pending_review');
+    // Bot applies tier defaults and shows buttons
+    s3.executionPlan.status = 'confirming';
+    writeFileSync(MOCK_STATE, JSON.stringify(s3, null, 2));
+
+    // STEP 4: User clicks Execute All
+    const s4 = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    s4.executionPlan.status = 'approved';
+    writeFileSync(MOCK_STATE, JSON.stringify(s4, null, 2));
+    // Write dispatch
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({
+        status: 'approved',
+        tasks: s4.executionPlan.tasks
+    }, null, 2));
+    // Remove plan mode marker (approval clears plan-only restriction)
+    unlinkSync(MOCK_PLAN_MODE);
+
+    ok(!existsSync(MOCK_PLAN_MODE), 'step 4: plan mode marker removed after approval');
+    ok(existsSync(MOCK_DISPATCH), 'step 4: dispatch file created');
+    const dispatch = JSON.parse(readFileSync(MOCK_DISPATCH, 'utf8'));
+    strictEqual(dispatch.status, 'approved', 'step 4: dispatch approved');
+
+    // STEP 5: Dispatch runs (plan mode off → dispatch allowed)
+    const isPlanMode = existsSync(MOCK_PLAN_MODE);
+    ok(!isPlanMode, 'step 5: plan mode off');
+    strictEqual(dispatch.tasks[0].taskStatus, 'pending', 'step 5: task 1 pending');
+});
+
+await test('mock flow: plan mode blocks dispatch even with approved dispatch file', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    // Approved dispatch exists (from bot clicking Execute All)
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({
+        status: 'approved',
+        tasks: [{ id: 1, description: 'Run me', taskStatus: 'pending' }]
+    }, null, 2));
+
+    // Watcher dispatch loop
+    let taskRan = false;
+    if (existsSync(MOCK_DISPATCH) && !existsSync(MOCK_PLAN_MODE)) {
+        // Would run task
+        taskRan = true;
+    }
+    // Plan mode blocks even approved dispatches
+    // This test verifies the guard was checked BEFORE dispatch status
+    ok(!taskRan, 'dispatch should not run while plan mode marker exists');
+
+    // Remove marker → dispatch should now proceed
+    unlinkSync(MOCK_PLAN_MODE);
+    if (existsSync(MOCK_DISPATCH) && !existsSync(MOCK_PLAN_MODE)) {
+        taskRan = true;
+    }
+    ok(taskRan, 'dispatch should run after marker removed');
+});
+
 // ============================================================================
 // SUMMARY
 // ============================================================================
