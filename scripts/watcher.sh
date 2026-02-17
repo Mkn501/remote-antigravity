@@ -297,13 +297,7 @@ Rules for the reply file:
                 fi
 
                 # Finalize GEMINI_ARGS now that TELEGRAM_PROMPT is built
-                # Plan refinements: NO --yolo (prevents silent code writes)
-                if [ "$IS_PLAN_FEATURE" = true ] && ! echo "$USER_MESSAGES" | grep -qi "^/plan_feature\|^/plan "; then
-                    echo "🔒 Plan refinement: --yolo disabled (spec-only mode)" >&2
-                    GEMINI_ARGS+=("-p" "$TELEGRAM_PROMPT")
-                else
-                    GEMINI_ARGS+=("--yolo" "-p" "$TELEGRAM_PROMPT")
-                fi
+                GEMINI_ARGS+=("--yolo" "-p" "$TELEGRAM_PROMPT")
 
                 # Temporarily disable hooks (Gemini CLI bug workaround)
                 TARGET_SETTINGS="$ACTIVE_PROJECT/.gemini/settings.json"
@@ -393,6 +387,22 @@ Rules for the reply file:
                         # Exclude runtime files from commit
                         git reset HEAD -- .gemini/wa_session.lock 2>/dev/null || true
                         git checkout -- .gemini/wa_session.lock 2>/dev/null || true
+
+                        # Plan mode enforcement: revert any code file changes
+                        if [ "$IS_PLAN_FEATURE" = true ]; then
+                            CODE_FILES=$(git diff --name-only --cached -- '*.js' '*.py' '*.sh' '*.ts' '*.css' '*.html' 2>/dev/null)
+                            UNSTAGED_CODE=$(git diff --name-only -- '*.js' '*.py' '*.sh' '*.ts' '*.css' '*.html' 2>/dev/null)
+                            ALL_CODE="$CODE_FILES$UNSTAGED_CODE"
+                            if [ -n "$ALL_CODE" ]; then
+                                echo "🔒 Plan mode: reverting code file changes:" >&2
+                                echo "$ALL_CODE" | sort -u | while read -r f; do
+                                    git checkout HEAD -- "$f" 2>/dev/null || true
+                                    echo "   ↩️  $f" >&2
+                                done
+                                write_to_outbox "🔒 Plan mode: code changes blocked (spec-only mode)"
+                            fi
+                        fi
+
                         git add -A 2>/dev/null
                         git reset HEAD -- .gemini/wa_session.lock 2>/dev/null || true
                         git commit -m "telegram: session $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
