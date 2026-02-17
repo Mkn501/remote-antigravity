@@ -96,13 +96,19 @@ while true; do
                 IS_SHUTDOWN=true  # /shutdown archives branch after running
             fi
 
-            # Tiered model routing: Flash for routine workflows, default for everything else
+            # Tiered model routing
             ROUTINE_MODEL="gemini-2.5-flash"
+            PLANNING_MODEL="gemini-3-pro-preview"
+            FALLBACK_MODEL="gemini-2.5-pro"  # Pro 3 → Pro 2.5 fallback
             GEMINI_ARGS=()
             case "$USER_MESSAGES" in
                 /startup*|/shutdown*)
                     ACTIVE_MODEL="$ROUTINE_MODEL"
                     echo "⚡ Using $ROUTINE_MODEL for routine workflow" >&2
+                    ;;
+                /plan_feature*|/plan*)
+                    ACTIVE_MODEL="${SELECTED_MODEL:-$PLANNING_MODEL}"
+                    echo "🧠 Using $ACTIVE_MODEL for planning workflow" >&2
                     ;;
                 *)
                     ACTIVE_MODEL="${SELECTED_MODEL:-$DEFAULT_MODEL}"
@@ -242,9 +248,36 @@ Rules for the reply file:
                 # Detect rate limit / quota errors
                 STDERR_CONTENT=$(cat "$GEMINI_STDERR" 2>/dev/null || echo "")
                 rm -f "$GEMINI_STDERR"
+                RATE_LIMITED=false
                 if echo "$STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
-                    write_to_outbox "⚠️ Rate limit hit on $ACTIVE_MODEL. Try again in a few minutes or switch model with /model."
+                    RATE_LIMITED=true
+                    write_to_outbox "⚠️ Rate limit hit on $ACTIVE_MODEL."
                     echo "⚠️  Rate limit detected for $ACTIVE_MODEL" >&2
+                fi
+
+                # Fallback retry: if rate limited + no output, retry with fallback model
+                if [ "$RATE_LIMITED" = true ] && [ -z "$GEMINI_OUTPUT" ] && [ "$ACTIVE_MODEL" != "$FALLBACK_MODEL" ] && [ "$ACTIVE_MODEL" != "$ROUTINE_MODEL" ]; then
+                    write_to_outbox "🔄 Retrying with $FALLBACK_MODEL..."
+                    echo "🔄 Falling back to $FALLBACK_MODEL" >&2
+                    ACTIVE_MODEL="$FALLBACK_MODEL"
+                    FALLBACK_ARGS=("--model" "$FALLBACK_MODEL")
+                    # Copy all args except --model
+                    for arg in "${GEMINI_ARGS[@]}"; do
+                        if [ "$SKIP_NEXT" = true ]; then SKIP_NEXT=false; continue; fi
+                        if [ "$arg" = "--model" ]; then SKIP_NEXT=true; continue; fi
+                        FALLBACK_ARGS+=("$arg")
+                    done
+
+                    GEMINI_STDERR2=$(mktemp)
+                    GEMINI_OUTPUT=$(gemini "${FALLBACK_ARGS[@]}" 2> >(tee -a "$DOT_GEMINI/wa_session.log" > "$GEMINI_STDERR2")) || true
+                    STDERR2=$(cat "$GEMINI_STDERR2" 2>/dev/null || echo "")
+                    rm -f "$GEMINI_STDERR2"
+                    if echo "$STDERR2" | grep -qiE '429|rate.limit|quota|resource.exhausted'; then
+                        write_to_outbox "❌ $FALLBACK_MODEL also rate limited. Try again later."
+                        echo "❌ Fallback also rate limited" >&2
+                    else
+                        write_to_outbox "✅ $FALLBACK_MODEL succeeded."
+                    fi
                 fi
 
                 # Restore hooks immediately
