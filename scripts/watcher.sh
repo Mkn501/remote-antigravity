@@ -235,7 +235,7 @@ Rules for the reply file:
                     SETTINGS_BACKED_UP=true
                 fi
 
-                write_to_outbox "🧠 Running $ACTIVE_MODEL..."
+                write_to_outbox "🧠 Running Gemini CLI ($ACTIVE_MODEL)..."
                 GEMINI_STDERR=$(mktemp)
                 GEMINI_OUTPUT=$(gemini "${GEMINI_ARGS[@]}" 2> >(tee -a "$DOT_GEMINI/wa_session.log" > "$GEMINI_STDERR")) || true
 
