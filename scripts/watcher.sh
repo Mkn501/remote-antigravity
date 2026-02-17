@@ -407,7 +407,11 @@ Rules for the reply file:
                         # Find the newest spec file created by Gemini
                         SPEC_FILE=$(cd "$ACTIVE_PROJECT" && find docs/specs -name "*_spec.md" -newer .gemini/wa_inbox.json 2>/dev/null | head -1)
                         if [ -n "$SPEC_FILE" ]; then
-                            write_to_outbox_file "$ACTIVE_PROJECT/$SPEC_FILE" "📎 Plan spec — review and reply with feedback, or /review_plan to approve"
+                            # Copy as .txt for Telegram readability (.md not rendered in Telegram)
+                            SPEC_BASENAME=$(basename "$SPEC_FILE" .md)
+                            SPEC_TXT="/tmp/${SPEC_BASENAME}.txt"
+                            cp "$ACTIVE_PROJECT/$SPEC_FILE" "$SPEC_TXT"
+                            write_to_outbox_file "$SPEC_TXT" "📎 Plan spec — review and reply with feedback, or /review_plan to approve"
                             echo "📎 Spec file queued: $SPEC_FILE" >&2
                         fi
 
