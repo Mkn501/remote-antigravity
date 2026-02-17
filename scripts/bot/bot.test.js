@@ -584,15 +584,27 @@ const PLATFORM_MODELS = {
 
 const TIER_EMOJI = { 'top': '🧠', 'mid': '⚡', 'free': '🆓' };
 
+const DIFFICULTY_LABEL = (score) => {
+    if (!score) return '';
+    if (score <= 2) return '⭐ Trivial';
+    if (score <= 4) return '⭐⭐ Easy';
+    if (score <= 6) return '⭐⭐⭐ Moderate';
+    if (score <= 8) return '🔥 Hard';
+    return '💀 Expert';
+};
+
 function formatExecutionPlan(plan) {
     const lines = [`📋 Execution Plan (${plan.tasks.length} tasks)\n`];
     for (const t of plan.tasks) {
         const tierEmoji = TIER_EMOJI[t.tier] || '❓';
-        const platform = t.platform || '—';
-        const model = t.model || (t.platform === 'jules' ? 'GitHub' : '—');
-        const parallel = t.parallel ? '✅' : '❌';
-        const deps = t.deps?.length ? `deps: ${t.deps.join(', ')}` : '';
-        lines.push(`${t.id}. ${t.description}  ${tierEmoji} ${platform}: ${model}  ∥${parallel} ${deps}`);
+        const modelEntry = PLATFORM_MODELS[t.platform]?.find(m => m.id === t.model);
+        const modelLabel = modelEntry ? modelEntry.label : (t.model || (t.platform === 'jules' ? 'GitHub' : '—'));
+        const diff = t.difficulty ? `  ${DIFFICULTY_LABEL(t.difficulty)} (${t.difficulty}/10)` : '';
+        const deps = t.deps?.length ? `  deps: ${t.deps.join(', ')}` : '';
+        lines.push(`${t.id}. ${t.description}  ${tierEmoji} ${modelLabel}${diff}${deps}`);
+        if (t.summary) {
+            lines.push(`   → ${t.summary}`);
+        }
     }
     return lines.join('\n');
 }
@@ -739,11 +751,58 @@ await test('execution plan: callback data format validation', () => {
         'ep_platform:gemini', 'ep_platform:jules',
         'ep_model:gemini-2.5-flash', 'ep_execute', 'ep_override',
         'ep_task:1', 'ep_task_plat:1:gemini', 'ep_task_model:1:gemini-2.5-flash',
-        'ep_replan'
+        'ep_replan', 'ep_continue', 'ep_stop'
     ];
     for (const cb of callbacks) {
         ok(cb.length <= 64, `callback data "${cb}" should be under 64 bytes (Telegram limit)`);
     }
+});
+
+await test('execution plan: DIFFICULTY_LABEL maps correctly', () => {
+    strictEqual(DIFFICULTY_LABEL(1), '⭐ Trivial');
+    strictEqual(DIFFICULTY_LABEL(2), '⭐ Trivial');
+    strictEqual(DIFFICULTY_LABEL(3), '⭐⭐ Easy');
+    strictEqual(DIFFICULTY_LABEL(4), '⭐⭐ Easy');
+    strictEqual(DIFFICULTY_LABEL(5), '⭐⭐⭐ Moderate');
+    strictEqual(DIFFICULTY_LABEL(6), '⭐⭐⭐ Moderate');
+    strictEqual(DIFFICULTY_LABEL(7), '🔥 Hard');
+    strictEqual(DIFFICULTY_LABEL(8), '🔥 Hard');
+    strictEqual(DIFFICULTY_LABEL(9), '💀 Expert');
+    strictEqual(DIFFICULTY_LABEL(10), '💀 Expert');
+    strictEqual(DIFFICULTY_LABEL(null), '');
+    strictEqual(DIFFICULTY_LABEL(undefined), '');
+});
+
+await test('execution plan: formatExecutionPlan shows summary and difficulty', () => {
+    const plan = {
+        tasks: [
+            {
+                id: 1, description: 'Add config', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash',
+                parallel: true, deps: [], summary: 'Adds a config file for login credentials', difficulty: 3
+            },
+            {
+                id: 2, description: 'Write test', tier: 'top', platform: 'gemini', model: 'gemini-2.5-pro',
+                parallel: false, deps: [1], summary: 'Tests the full login flow', difficulty: 8
+            }
+        ]
+    };
+    const text = formatExecutionPlan(plan);
+    ok(text.includes('⭐⭐ Easy (3/10)'), 'should show difficulty label for task 1');
+    ok(text.includes('🔥 Hard (8/10)'), 'should show difficulty label for task 2');
+    ok(text.includes('→ Adds a config file'), 'should show summary for task 1');
+    ok(text.includes('→ Tests the full login flow'), 'should show summary for task 2');
+});
+
+await test('execution plan: formatExecutionPlan graceful without summary/difficulty', () => {
+    const plan = {
+        tasks: [
+            { id: 1, description: 'Add config', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash', parallel: true, deps: [] }
+        ]
+    };
+    const text = formatExecutionPlan(plan);
+    ok(text.includes('1. Add config'), 'should still show basic task info');
+    ok(!text.includes('→'), 'should not show summary arrow when missing');
+    ok(!text.includes('/10'), 'should not show difficulty when missing');
 });
 
 // ============================================================================
