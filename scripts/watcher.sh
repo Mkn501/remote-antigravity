@@ -211,7 +211,10 @@ while true; do
                         # Write plan mode marker for /plan_feature runs
                         if [ "$IS_PLAN_FEATURE" = true ]; then
                             echo "plan_feature" > "$PLAN_MODE_FILE"
-                            echo "🔒 Plan mode marker set" >&2
+                            # Clear stale dispatch + execution plan from previous sessions
+                            rm -f "$DOT_GEMINI/wa_dispatch.json" "$DOT_GEMINI/wa_dispatch_continue.json"
+                            python3 -c "import json; f='$ACTIVE_PROJECT/.gemini/state.json'; s=json.load(open(f)); s.pop('executionPlan',None); json.dump(s,open(f,'w'),indent=2)" 2>/dev/null || true
+                            echo "🔒 Plan mode marker set (stale dispatch cleared)" >&2
                         fi
                     fi
                 fi
@@ -525,6 +528,10 @@ print(f'Loaded {len(tasks)} tasks into execution plan')
     CONTINUE_FILE="$DOT_GEMINI/wa_dispatch_continue.json"
 
     if [ -f "$DISPATCH_FILE" ] && [ ! -f "$LOCK_FILE" ] && command -v jq &>/dev/null; then
+        # Block dispatch when plan mode is active (requires explicit /review_plan approval first)
+        if [ -f "$PLAN_MODE_FILE" ]; then
+            : # Skip dispatch — plan mode active, waiting for approval
+        else
         DISPATCH_STATUS=$(jq -r '.status // empty' "$DISPATCH_FILE" 2>/dev/null || echo "")
 
         if [ "$DISPATCH_STATUS" = "approved" ]; then
@@ -739,6 +746,7 @@ $TASK_REPORT" "$STEP_MARKUP"
                 fi
             fi
         fi
+        fi # plan mode guard
     fi
 
     sleep "$POLL_INTERVAL"
