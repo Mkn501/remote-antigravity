@@ -135,6 +135,12 @@ while true; do
             if echo "$USER_MESSAGES" | grep -qi "^/plan_feature\|^/plan "; then
                 IS_PLAN_FEATURE=true
             fi
+            # Auto-detect plan mode: if .wa_plan_mode marker exists, we're still in planning
+            PLAN_MODE_FILE="$DOT_GEMINI/wa_plan_mode"
+            if [ -f "$PLAN_MODE_FILE" ] && [ "$IS_PLAN_FEATURE" = false ]; then
+                IS_PLAN_FEATURE=true
+                echo "🔒 Plan mode active (from previous /plan_feature) — no code changes allowed" >&2
+            fi
 
             # Tiered model routing
             ROUTINE_MODEL="gemini-2.5-flash"
@@ -151,7 +157,12 @@ while true; do
                     echo "🧠 Using $ACTIVE_MODEL for planning workflow" >&2
                     ;;
                 *)
-                    ACTIVE_MODEL="${SELECTED_MODEL:-$DEFAULT_MODEL}"
+                    if [ "$IS_PLAN_FEATURE" = true ]; then
+                        ACTIVE_MODEL="${SELECTED_MODEL:-$PLANNING_MODEL}"
+                        echo "🧠 Using $ACTIVE_MODEL for plan refinement" >&2
+                    else
+                        ACTIVE_MODEL="${SELECTED_MODEL:-$DEFAULT_MODEL}"
+                    fi
                     ;;
             esac
             GEMINI_ARGS+=("--model" "$ACTIVE_MODEL")
@@ -197,6 +208,11 @@ while true; do
                         echo "🌿 Created branch: $ACTIVE_BRANCH (from main)" >&2
                         # Clear session history for new branch
                         rm -f "$ACTIVE_PROJECT/.gemini/session_history.txt"
+                        # Write plan mode marker for /plan_feature runs
+                        if [ "$IS_PLAN_FEATURE" = true ]; then
+                            echo "plan_feature" > "$PLAN_MODE_FILE"
+                            echo "🔒 Plan mode marker set" >&2
+                        fi
                     fi
                 fi
 
@@ -248,12 +264,22 @@ Rules for the reply file:
 - This file gets sent directly to the user's phone"
                 else
                     # Normal message (no workflow)
+                    PLAN_GUARD=""
+                    if [ "$IS_PLAN_FEATURE" = true ]; then
+                        PLAN_GUARD="
+⛔ CRITICAL: PLANNING MODE IS ACTIVE.
+- You are refining an existing plan. The spec is in docs/specs/ — read it, update it per the user's feedback.
+- You MUST NOT write any application code (.js, .py, .sh, etc). Only update specs, tasks, and documentation.
+- After updating the spec, write a short summary of changes to .gemini/telegram_reply.txt
+- If the user says 'looks good' or similar approval, just acknowledge — do NOT implement anything.
+"
+                    fi
                     TELEGRAM_PROMPT="📱 Telegram message from the user:
 $USER_MESSAGES
 ---
 Conversation history for this session is in: .gemini/session_history.txt
 Read it first for context on what has been discussed so far.
----
+---${PLAN_GUARD}
 You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
