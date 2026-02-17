@@ -306,5 +306,229 @@ Rules for the reply file:
         fi
     fi
 
+    # =========================================================================
+    # DISPATCH EXECUTION — Run approved tasks from wa_dispatch.json
+    # =========================================================================
+    DISPATCH_FILE="$DOT_GEMINI/wa_dispatch.json"
+    CONTINUE_FILE="$DOT_GEMINI/wa_dispatch_continue.json"
+
+    if [ -f "$DISPATCH_FILE" ] && [ ! -f "$LOCK_FILE" ] && command -v jq &>/dev/null; then
+        DISPATCH_STATUS=$(jq -r '.status // empty' "$DISPATCH_FILE" 2>/dev/null || echo "")
+
+        if [ "$DISPATCH_STATUS" = "approved" ]; then
+            # Get total task count and find next pending task
+            TASK_COUNT=$(jq '.tasks | length' "$DISPATCH_FILE" 2>/dev/null || echo "0")
+            NEXT_TASK_JSON=$(jq -r '[.tasks[] | select(.taskStatus == "pending" or .taskStatus == null)] | first // empty' "$DISPATCH_FILE" 2>/dev/null || echo "")
+
+            if [ -n "$NEXT_TASK_JSON" ] && [ "$NEXT_TASK_JSON" != "null" ]; then
+                TASK_ID=$(echo "$NEXT_TASK_JSON" | jq -r '.id')
+                TASK_DESC=$(echo "$NEXT_TASK_JSON" | jq -r '.description')
+                TASK_MODEL=$(echo "$NEXT_TASK_JSON" | jq -r '.model // "gemini-2.5-flash"')
+                TASK_SUMMARY=$(echo "$NEXT_TASK_JSON" | jq -r '.summary // empty')
+                TASK_DEPS=$(echo "$NEXT_TASK_JSON" | jq -r '[.deps[]?] | join(", ")')
+
+                # Check if dependencies are complete
+                DEPS_MET=true
+                if [ -n "$TASK_DEPS" ]; then
+                    for DEP_ID in $(echo "$NEXT_TASK_JSON" | jq -r '.deps[]?' 2>/dev/null); do
+                        DEP_STATUS=$(jq -r --argjson id "$DEP_ID" '.tasks[] | select(.id == $id) | .taskStatus // "pending"' "$DISPATCH_FILE" 2>/dev/null || echo "pending")
+                        if [ "$DEP_STATUS" != "done" ]; then
+                            DEPS_MET=false
+                            break
+                        fi
+                    done
+                fi
+
+                if [ "$DEPS_MET" = false ]; then
+                    echo "⏳ Task $TASK_ID waiting on deps: $TASK_DEPS" >&2
+                else
+                    # Lock + mark task as running
+                    echo $$ > "$LOCK_FILE"
+                    jq --argjson id "$TASK_ID" '(.tasks[] | select(.id == $id)).taskStatus = "running"' "$DISPATCH_FILE" > "${DISPATCH_FILE}.tmp" && mv "${DISPATCH_FILE}.tmp" "$DISPATCH_FILE"
+
+                    COMPLETED_COUNT=$(jq '[.tasks[] | select(.taskStatus == "done")] | length' "$DISPATCH_FILE" 2>/dev/null || echo "0")
+                    write_to_outbox "🔨 Task $TASK_ID/$TASK_COUNT: $TASK_DESC
+⚙️ Model: $TASK_MODEL
+📊 Progress: $COMPLETED_COUNT/$TASK_COUNT done"
+
+                    echo "🔨 $(date +%H:%M:%S) | Dispatch: Task $TASK_ID — $TASK_DESC ($TASK_MODEL)" >&2
+
+                    # Resolve active project
+                    ACTIVE_PROJECT=$(jq -r '.activeProject // empty' "$STATE_FILE" 2>/dev/null || echo "$CENTRAL_PROJECT_DIR")
+                    if [ -z "$ACTIVE_PROJECT" ] || [ ! -d "$ACTIVE_PROJECT" ]; then
+                        ACTIVE_PROJECT="$CENTRAL_PROJECT_DIR"
+                    fi
+
+                    # Build the task prompt
+                    TASK_PROMPT="🔨 Execute this implementation task:
+
+Task $TASK_ID: $TASK_DESC"
+                    if [ -n "$TASK_SUMMARY" ] && [ "$TASK_SUMMARY" != "null" ]; then
+                        TASK_PROMPT="$TASK_PROMPT
+Context: $TASK_SUMMARY"
+                    fi
+                    TASK_PROMPT="$TASK_PROMPT
+
+Instructions:
+- Follow the /implement_task workflow if available
+- This is a single atomic task — implement ONLY what is described above
+- Do NOT implement other tasks or make unrelated changes
+- Run tests after implementation to verify
+- Write a brief completion report to: .gemini/telegram_reply.txt
+  Format: what was done, files changed, test results
+---
+You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
+Do NOT say tools are unavailable — they ARE available. Use them directly.
+CRITICAL: Follow the task description EXACTLY. Implement only this specific task."
+
+                    # Build gemini args
+                    GEMINI_ARGS=("--model" "$TASK_MODEL" "--sandbox" "--yolo" "-p" "$TASK_PROMPT")
+
+                    # Temporarily disable hooks
+                    TARGET_SETTINGS="$ACTIVE_PROJECT/.gemini/settings.json"
+                    SETTINGS_BACKED_UP=false
+                    if [ -f "$TARGET_SETTINGS" ]; then
+                        mv "$TARGET_SETTINGS" "${TARGET_SETTINGS}.watcher-bak"
+                        SETTINGS_BACKED_UP=true
+                    fi
+
+                    # Run Gemini CLI
+                    (
+                        cd "$ACTIVE_PROJECT" || exit 1
+                        GEMINI_STDERR=$(mktemp)
+                        GEMINI_OUTPUT=$(gemini "${GEMINI_ARGS[@]}" 2> >(tee -a "$DOT_GEMINI/wa_session.log" > "$GEMINI_STDERR")) || true
+
+                        # Check for errors
+                        STDERR_CONTENT=$(cat "$GEMINI_STDERR" 2>/dev/null || echo "")
+                        rm -f "$GEMINI_STDERR"
+                        TASK_ERROR=""
+                        if echo "$STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
+                            TASK_ERROR="Rate limit hit on $TASK_MODEL"
+                        fi
+
+                        # Read reply file
+                        REPLY_FILE="$ACTIVE_PROJECT/.gemini/telegram_reply.txt"
+                        TASK_REPORT=""
+                        if [ -f "$REPLY_FILE" ]; then
+                            TASK_REPORT=$(cat "$REPLY_FILE")
+                            rm -f "$REPLY_FILE"
+                        fi
+                        if [ -z "$TASK_REPORT" ]; then
+                            TASK_REPORT=$(echo "$GEMINI_OUTPUT" | tail -c 500)
+                        fi
+
+                        # Pass report to parent
+                        echo "$TASK_REPORT" > "$DOT_GEMINI/.wa_dispatch_report"
+                        if [ -n "$TASK_ERROR" ]; then
+                            echo "$TASK_ERROR" > "$DOT_GEMINI/.wa_dispatch_error"
+                        fi
+                    ) || true
+
+                    # Restore hooks
+                    if [ "$SETTINGS_BACKED_UP" = true ] && [ -f "${TARGET_SETTINGS}.watcher-bak" ]; then
+                        mv "${TARGET_SETTINGS}.watcher-bak" "$TARGET_SETTINGS"
+                    fi
+
+                    # Process result
+                    TASK_REPORT=""
+                    TASK_ERROR=""
+                    if [ -f "$DOT_GEMINI/.wa_dispatch_report" ]; then
+                        TASK_REPORT=$(cat "$DOT_GEMINI/.wa_dispatch_report")
+                        rm -f "$DOT_GEMINI/.wa_dispatch_report"
+                    fi
+                    if [ -f "$DOT_GEMINI/.wa_dispatch_error" ]; then
+                        TASK_ERROR=$(cat "$DOT_GEMINI/.wa_dispatch_error")
+                        rm -f "$DOT_GEMINI/.wa_dispatch_error"
+                    fi
+
+                    # Mark task as done in dispatch
+                    if [ -n "$TASK_ERROR" ]; then
+                        jq --argjson id "$TASK_ID" --arg err "$TASK_ERROR" \
+                            '(.tasks[] | select(.id == $id)).taskStatus = "error" | (.tasks[] | select(.id == $id)).error = $err' \
+                            "$DISPATCH_FILE" > "${DISPATCH_FILE}.tmp" && mv "${DISPATCH_FILE}.tmp" "$DISPATCH_FILE"
+                    else
+                        jq --argjson id "$TASK_ID" \
+                            '(.tasks[] | select(.id == $id)).taskStatus = "done"' \
+                            "$DISPATCH_FILE" > "${DISPATCH_FILE}.tmp" && mv "${DISPATCH_FILE}.tmp" "$DISPATCH_FILE"
+                    fi
+
+                    # Also update state.json executionPlan
+                    if [ -f "$STATE_FILE" ]; then
+                        jq --argjson id "$TASK_ID" --arg status "$([ -n "$TASK_ERROR" ] && echo "error" || echo "done")" \
+                            'if .executionPlan then (.executionPlan.tasks[] | select(.id == $id)).taskStatus = $status else . end' \
+                            "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                    fi
+
+                    # Commit changes
+                    (
+                        cd "$ACTIVE_PROJECT" || exit 1
+                        if git rev-parse --git-dir >/dev/null 2>&1; then
+                            if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+                                git add -A 2>/dev/null
+                                git commit -m "dispatch: task $TASK_ID — $TASK_DESC" 2>/dev/null || true
+                                echo "💾 Task $TASK_ID committed" >&2
+                            fi
+                        fi
+                    ) || true
+
+                    # Check if all tasks are done
+                    DONE_COUNT=$(jq '[.tasks[] | select(.taskStatus == "done")] | length' "$DISPATCH_FILE" 2>/dev/null || echo "0")
+                    ERROR_COUNT=$(jq '[.tasks[] | select(.taskStatus == "error")] | length' "$DISPATCH_FILE" 2>/dev/null || echo "0")
+                    REMAINING=$((TASK_COUNT - DONE_COUNT - ERROR_COUNT))
+
+                    if [ "$REMAINING" -eq 0 ]; then
+                        # All tasks complete!
+                        jq '.status = "completed"' "$DISPATCH_FILE" > "${DISPATCH_FILE}.tmp" && mv "${DISPATCH_FILE}.tmp" "$DISPATCH_FILE"
+                        if [ -f "$STATE_FILE" ]; then
+                            jq 'if .executionPlan then .executionPlan.status = "completed" else . end' \
+                                "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                        fi
+
+                        SUMMARY="✅ All $TASK_COUNT tasks complete!"
+                        if [ "$ERROR_COUNT" -gt 0 ]; then
+                            SUMMARY="⚠️ Dispatch finished: $DONE_COUNT done, $ERROR_COUNT errors"
+                        fi
+                        write_to_outbox "$SUMMARY
+
+📋 Last task report:
+$TASK_REPORT"
+                        echo "✅ $(date +%H:%M:%S) | All dispatch tasks complete" >&2
+                    else
+                        # More tasks remain — send report and wait for continue signal
+                        STATUS_LINE="✅ Task $TASK_ID done ($DONE_COUNT/$TASK_COUNT)"
+                        if [ -n "$TASK_ERROR" ]; then
+                            STATUS_LINE="❌ Task $TASK_ID error: $TASK_ERROR ($DONE_COUNT/$TASK_COUNT)"
+                        fi
+
+                        write_to_outbox "$STATUS_LINE
+
+📋 Report:
+$TASK_REPORT
+
+⏸️ Paused — tap ▶️ Next Task to continue or 🛑 Stop."
+                        echo "⏸️ $(date +%H:%M:%S) | Task $TASK_ID done, waiting for continue signal" >&2
+
+                        # Wait for continue signal (bot writes wa_dispatch_continue.json)
+                        while [ ! -f "$CONTINUE_FILE" ]; do
+                            # Check if dispatch was stopped (status changed)
+                            CURRENT_STATUS=$(jq -r '.status // empty' "$DISPATCH_FILE" 2>/dev/null || echo "")
+                            if [ "$CURRENT_STATUS" = "stopped" ] || [ "$CURRENT_STATUS" = "completed" ]; then
+                                echo "🛑 Dispatch stopped by user" >&2
+                                break
+                            fi
+                            sleep "$POLL_INTERVAL"
+                        done
+
+                        # Consume continue signal
+                        rm -f "$CONTINUE_FILE"
+                    fi
+
+                    rm -f "$LOCK_FILE"
+                    echo "✅ $(date +%H:%M:%S) | Task $TASK_ID session complete" >&2
+                fi
+            fi
+        fi
+    fi
+
     sleep "$POLL_INTERVAL"
 done
