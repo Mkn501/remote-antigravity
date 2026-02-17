@@ -590,7 +590,25 @@ print(f'Loaded {len(tasks)} tasks into execution plan')
                         ACTIVE_PROJECT="$CENTRAL_PROJECT_DIR"
                     fi
 
-                    # Build the task prompt
+                    # Build the task prompt — inject spec ref and scope boundary
+                    TASK_SPEC_REF=$(python3 -c "import json; s=json.load(open('$ACTIVE_PROJECT/.gemini/state.json')); print(s.get('executionPlan',{}).get('specRef',''))" 2>/dev/null || echo "")
+                    TASK_SCOPE=$(python3 -c "
+import re, sys
+desc = sys.argv[1]
+with open(sys.argv[2]) as f: content = f.read()
+# Find the task line matching this description
+escaped = re.escape(desc[:40])
+block_match = re.search(r'- \[[ ]\].*?' + escaped + r'.*?\n((?:  - \*\*.*?\n)*)', content)
+if block_match:
+    block = block_match.group(1)
+    scope = re.search(r'\*\*Scope Boundary:\*\*\s*(.+)', block)
+    files = re.search(r'\*\*File\(s\):\*\*\s*(.+)', block)
+    sig = re.search(r'\*\*Signature:\*\*\s*(.+)', block)
+    if scope: print(f'SCOPE: {scope.group(1).strip()}')
+    if files: print(f'FILES: {files.group(1).strip()}')
+    if sig: print(f'SIGNATURE: {sig.group(1).strip()}')
+" "$TASK_DESC" "$ACTIVE_PROJECT/antigravity_tasks.md" 2>/dev/null || echo "")
+
                     TASK_PROMPT="🔨 Execute this implementation task:
 
 Task $TASK_ID: $TASK_DESC"
@@ -598,12 +616,20 @@ Task $TASK_ID: $TASK_DESC"
                         TASK_PROMPT="$TASK_PROMPT
 Context: $TASK_SUMMARY"
                     fi
+                    if [ -n "$TASK_SPEC_REF" ]; then
+                        TASK_PROMPT="$TASK_PROMPT
+Spec: $TASK_SPEC_REF — read this file FIRST for detailed requirements, signatures, and acceptance criteria."
+                    fi
+                    if [ -n "$TASK_SCOPE" ]; then
+                        TASK_PROMPT="$TASK_PROMPT
+$TASK_SCOPE"
+                    fi
                     TASK_PROMPT="$TASK_PROMPT
 
 Instructions:
-- Follow the /implement_task workflow if available
 - This is a single atomic task — implement ONLY what is described above
 - Do NOT implement other tasks or make unrelated changes
+- Do NOT modify files outside the scope boundary listed above
 - Run tests after implementation to verify
 - Write a brief completion report to: .gemini/telegram_reply.txt
   Format: what was done, files changed, test results
