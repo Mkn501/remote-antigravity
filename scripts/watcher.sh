@@ -426,6 +426,10 @@ Rules for the reply file:
                             cp "$ACTIVE_PROJECT/$SPEC_FILE" "$SPEC_TXT"
                             write_to_outbox_file "$SPEC_TXT" "📎 Plan spec — review and reply with feedback, or /review_plan to approve"
                             echo "📎 Spec file queued: $SPEC_FILE" >&2
+                            SPEC_QUEUED=true
+                        else
+                            echo "⚠️  No spec file found after plan_feature run" >&2
+                            SPEC_QUEUED=false
                         fi
 
                         # Auto-load execution plan from antigravity_tasks.md
@@ -497,8 +501,8 @@ print(f'Loaded {len(tasks)} tasks into execution plan')
 
                 # Pass response to parent shell
                 echo "$TELEGRAM_RESPONSE" > "$DOT_GEMINI/.wa_last_response"
-                # Mark plan_feature runs so parent skips raw relay (spec file + auto-trigger handle it)
-                if [ "$IS_PLAN_FEATURE" = true ]; then
+                # Mark plan_feature runs so parent skips raw relay — ONLY if spec was actually queued
+                if [ "$IS_PLAN_FEATURE" = true ] && [ "${SPEC_QUEUED:-false}" = true ]; then
                     touch "$DOT_GEMINI/.wa_plan_feature_run"
                 fi
             ) || true
