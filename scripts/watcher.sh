@@ -450,7 +450,7 @@ with open(tasks_path) as f:
     content = f.read()
 
 # Parse To Do items with the spec ref
-pattern = r'- \[[ ]\] \[([^\]]+)\] \[([^\]]+)\] (.+?) \[Ref: ' + re.escape(spec_ref) + r'\] \[Difficulty: (\d+)\]'
+pattern = r'- \[[ ]\] \[([^\]]+)\] \[([^\]]+)\] (.+?) \[Ref: ' + re.escape(spec_ref) + r'\] \[Difficulty: (\d+)(?:/\d+)?\]'
 matches = re.findall(pattern, content)
 
 if not matches:
