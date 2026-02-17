@@ -135,3 +135,5 @@ Task 4 (independent)
 - Tasks [X, Y] are safe to run simultaneously (no shared files)
 - Task [Z] must wait for [X] (modifies same file / depends on output)
 
+---
+> **Template Version**: 2.0 | **Last Updated**: 2026-02-17 | **Change**: Added §9-12 (Work Orders, Dependency Graph, Execution Plan, Parallelism) for builder-ready output.
