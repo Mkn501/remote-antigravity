@@ -984,7 +984,13 @@ setInterval(async () => {
     }
 
     if (dirty) {
-        atomicWrite(OUTBOX, outbox);
+        // Re-read outbox to merge — prevents race with watcher's write_to_outbox_file
+        const fresh = readJsonSafe(OUTBOX, { messages: [] });
+        const sentIds = new Set(unsent.filter(m => m.sent).map(m => m.id));
+        for (const m of fresh.messages) {
+            if (sentIds.has(m.id)) m.sent = true;
+        }
+        atomicWrite(OUTBOX, fresh);
     }
 }, POLL_INTERVAL_MS);
 
