@@ -21,8 +21,16 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 
 ## Backlog
 
-- [ ] [Research] Investigate replacing Gemini CLI with Claude Code — pro/contra analysis, impact on hook system, messaging protocol, and watcher.sh
-- [ ] [Research] Investigate replacing Gemini CLI with Kilo CLI — pro/contra analysis, impact on hook system, messaging protocol, and watcher.sh
+- [ ] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4]
+  - [ ] Add `get_backend()` + `run_agent()` abstraction to watcher.sh [Difficulty: 5]
+  - [ ] Replace inline Gemini invocation with `run_agent()` [Difficulty: 4]
+  - [ ] Generalize prompt tool references (generic tool names) [Difficulty: 2]
+  - [ ] Add `/backend` command to bot.js with inline keyboard [Difficulty: 4]
+  - [ ] Add callback handler for backend selection [Difficulty: 3]
+  - [ ] Update `/help`, `/status`, BOT_COMMANDS [Difficulty: 2]
+  - [ ] Update systemPatterns.md (architecture diagram + P-005) [Difficulty: 2]
+  - [ ] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2]
+  - [ ] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4]
 
 ## Done
 
