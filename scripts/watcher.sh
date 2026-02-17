@@ -425,10 +425,12 @@ Rules for the reply file:
                             echo "📎 Spec file queued: $SPEC_FILE" >&2
                         fi
 
-                        # Auto-load execution plan from antigravity_tasks.md (only if no plan exists yet)
+                        # Auto-load execution plan from antigravity_tasks.md
+                        # Always reload on initial /plan_feature, skip only on refinements if plan exists
                         TASKS_FILE="$ACTIVE_PROJECT/antigravity_tasks.md"
+                        IS_INITIAL_PLAN=$(echo "$USER_MESSAGES" | grep -qi "^/plan_feature\|^/plan " && echo "yes" || echo "no")
                         PLAN_EXISTS=$(python3 -c "import json; s=json.load(open('$ACTIVE_PROJECT/.gemini/state.json')); print('yes' if s.get('executionPlan',{}).get('status') else 'no')" 2>/dev/null || echo "no")
-                        if [ -f "$TASKS_FILE" ] && [ -n "$SPEC_FILE" ] && [ "$PLAN_EXISTS" = "no" ]; then
+                        if [ -f "$TASKS_FILE" ] && [ -n "$SPEC_FILE" ] && { [ "$IS_INITIAL_PLAN" = "yes" ] || [ "$PLAN_EXISTS" = "no" ]; }; then
                             python3 -c "
 import json, re, sys
 
