@@ -445,10 +445,17 @@ print(f'Loaded {len(tasks)} tasks into execution plan')
 
                 # Pass response to parent shell
                 echo "$TELEGRAM_RESPONSE" > "$DOT_GEMINI/.wa_last_response"
+                # Mark plan_feature runs so parent skips raw relay (spec file + auto-trigger handle it)
+                if [ "$IS_PLAN_FEATURE" = true ]; then
+                    touch "$DOT_GEMINI/.wa_plan_feature_run"
+                fi
             ) || true
 
-            # Write response to outbox
-            if [ -f "$DOT_GEMINI/.wa_last_response" ]; then
+            # Write response to outbox (skip for plan_feature — spec file + auto-trigger handle it)
+            if [ -f "$DOT_GEMINI/.wa_plan_feature_run" ]; then
+                rm -f "$DOT_GEMINI/.wa_plan_feature_run" "$DOT_GEMINI/.wa_last_response"
+                echo "📋 Plan feature output handled via spec file + auto-trigger" >&2
+            elif [ -f "$DOT_GEMINI/.wa_last_response" ]; then
                 LAST_RESPONSE=$(cat "$DOT_GEMINI/.wa_last_response")
                 if [ -n "$LAST_RESPONSE" ]; then
                     write_to_outbox "$LAST_RESPONSE"
