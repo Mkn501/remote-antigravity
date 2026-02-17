@@ -184,10 +184,10 @@ const MODEL_OPTIONS = [
 bot.onText(/^\/model$/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     const state = readJsonSafe(STATE_FILE, {});
-    const current = state.model || 'default';
+    const current = state.model || 'gemini-3-pro-preview';
     const currentLabel = MODEL_OPTIONS.find(m => m.id === current)?.short || current;
 
-    await bot.sendMessage(CHAT_ID, `🤖 Current model: ${currentLabel}\nSelect a model:`, {
+    await bot.sendMessage(CHAT_ID, `🤖 Current model: ${currentLabel}${!state.model ? ' (default)' : ''}\nSelect a model:`, {
         reply_markup: {
             inline_keyboard: [MODEL_OPTIONS.map(m => ({
                 text: m.id === current ? `✅ ${m.label}` : m.label,
