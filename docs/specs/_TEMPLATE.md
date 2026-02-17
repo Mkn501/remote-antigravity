@@ -88,3 +88,50 @@ Each spike must answer:
 - [ ] WebSocket async/sync compatibility?
 - [ ] Route ordering (avoid shadowing)?
 - [ ] State isolation (avoid pollution)?
+
+## 9. Work Orders
+
+> Every task must be a self-contained work order. The planning model's job is to eliminate reasoning for the execution model.
+
+### Task N: [Verb] [noun] in [file]
+- **File(s):** exact/path/to/file.js (lines ~80-95)
+- **Action:** Add | Modify | Delete | Refactor
+- **Signature:** functionName(input: Type) → output: Type
+- **Scope Boundary:** ONLY modify [file]. Do NOT touch [other files].
+- **Dependencies:** None | Requires Task N-1 complete
+- **Parallel:** Yes | No (with reason)
+- **Acceptance:** `npm test` passes | specific test command
+- **Tier:** 🧠 Top | ⚡ Mid | 🆓 Free
+- **Difficulty:** 1-10
+
+**Constraints:**
+- Each task ≤ 3 source files + 1 test file
+- Function signatures mandatory for logic tasks; CSS selectors for UI tasks
+- All file paths explicit — builders don't search
+
+## 10. Dependency Graph
+
+```
+Task 1 ──┐
+Task 2 ──┼──→ Task N (needs 1+2) ──→ Task N+1
+Task 3 ──┘
+Task 4 (independent)
+```
+
+## 11. Execution Plan Summary
+
+| # | Task | Tier | Parallel? | Deps |
+|---|---|---|---|---|
+| 1 | [description] | ⚡ Mid | ✅ | — |
+| 2 | [description] | ⚡ Mid | ✅ | — |
+| 3 | [description] | 🧠 Top | ❌ | 1, 2 |
+
+> Cost is estimated after platform+model selection.
+> On Telegram: assign platforms and models via buttons.
+> In IDE: use /implement_task per task sequentially.
+
+## 12. Parallelism Notes *(optional)*
+
+- Tasks [X, Y] are safe to run simultaneously (no shared files)
+- Task [Z] must wait for [X] (modifies same file / depends on output)
+
