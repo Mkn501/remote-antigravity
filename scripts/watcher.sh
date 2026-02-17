@@ -98,7 +98,7 @@ while true; do
 
             # Tiered model routing
             ROUTINE_MODEL="gemini-2.5-flash"
-            PLANNING_MODEL="gemini-3-pro-preview"
+            PLANNING_MODEL="gemini-2.5-flash"  # Use Flash for testing speed (change to gemini-3-pro-preview for production)
             FALLBACK_MODEL="gemini-2.5-pro"  # Pro 3 → Pro 2.5 fallback
             GEMINI_ARGS=()
             case "$USER_MESSAGES" in
