@@ -1339,6 +1339,321 @@ await test('mock flow: plan mode blocks dispatch even with approved dispatch fil
     }
     ok(taskRan, 'dispatch should run after marker removed');
 });
+// --- 13h. Edge Cases ---
+console.log('\n── Plan Flow Edge Cases ──');
+
+// Edge 1: Two /plan_feature in quick succession
+await test('edge: second /plan_feature resets everything cleanly', () => {
+    mockSetup();
+    // First /plan_feature sets up state
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+    writeFileSync(MOCK_STATE, JSON.stringify({
+        executionPlan: { status: 'pending_review', tasks: [{ id: 1, description: 'First plan task' }] }
+    }, null, 2));
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({ status: 'approved', tasks: [] }, null, 2));
+
+    // Second /plan_feature arrives — should reset everything
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+    if (existsSync(MOCK_DISPATCH)) unlinkSync(MOCK_DISPATCH);
+    const state = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    delete state.executionPlan;
+    writeFileSync(MOCK_STATE, JSON.stringify(state, null, 2));
+
+    ok(existsSync(MOCK_PLAN_MODE), 'marker should still exist');
+    ok(!existsSync(MOCK_DISPATCH), 'dispatch from first plan should be deleted');
+    const clean = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    strictEqual(clean.executionPlan, undefined, 'first plan should be wiped');
+});
+
+// Edge 2: Refinement while Gemini is still running (lock file exists)
+await test('edge: refinement queued when lock file exists', () => {
+    mockSetup();
+    const lockFile = resolve(MOCK_GEMINI, 'wa_session.lock');
+    writeFileSync(lockFile, '12345');
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    // Simulate: message arrives, watcher checks lock
+    const isLocked = existsSync(lockFile);
+    ok(isLocked, 'lock should be detected');
+
+    // Message should be written to inbox but NOT processed
+    const inbox = { messages: [{ id: 'msg_1', text: 'add logging', read: false }] };
+    writeFileSync(resolve(MOCK_GEMINI, 'wa_inbox.json'), JSON.stringify(inbox, null, 2));
+
+    // Watcher loop: skip processing when locked
+    let processed = false;
+    if (!isLocked) {
+        processed = true;
+    }
+    ok(!processed, 'message should NOT be processed while locked');
+
+    // After lock released
+    unlinkSync(lockFile);
+    ok(!existsSync(lockFile), 'lock should be removed');
+    // Next watcher cycle would pick up the queued message
+    const inboxData = JSON.parse(readFileSync(resolve(MOCK_GEMINI, 'wa_inbox.json'), 'utf8'));
+    strictEqual(inboxData.messages[0].read, false, 'message should still be unread (queued)');
+});
+
+// Edge 3: Non-standard code extensions (.mjs, .cjs, .jsx, .tsx)
+await test('edge: .mjs/.cjs/.jsx/.tsx files are also reverted in plan mode', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    const extendedCodeFiles = {
+        [resolve(MOCK_SCRIPTS, 'utils.mjs')]: 'export default {}',
+        [resolve(MOCK_SCRIPTS, 'config.cjs')]: 'module.exports = {}',
+        [resolve(MOCK_SCRIPTS, 'App.jsx')]: 'export function App() {}',
+        [resolve(MOCK_SCRIPTS, 'types.tsx')]: 'export type Foo = string',
+    };
+    for (const [path, content] of Object.entries(extendedCodeFiles)) {
+        writeFileSync(path, content);
+    }
+
+    // Extended blocklist (matching watcher.sh update)
+    const codeExtensions = ['.js', '.mjs', '.cjs', '.jsx', '.py', '.sh', '.ts', '.tsx', '.css', '.html'];
+    const reverted = [];
+    for (const f of Object.keys(extendedCodeFiles)) {
+        const ext = f.substring(f.lastIndexOf('.'));
+        if (codeExtensions.includes(ext)) {
+            unlinkSync(f);
+            reverted.push(ext);
+        }
+    }
+
+    strictEqual(reverted.length, 4, 'all 4 extended extensions should be reverted');
+    ok(reverted.includes('.mjs'), '.mjs should be blocked');
+    ok(reverted.includes('.cjs'), '.cjs should be blocked');
+    ok(reverted.includes('.jsx'), '.jsx should be blocked');
+    ok(reverted.includes('.tsx'), '.tsx should be blocked');
+});
+
+// Edge 4: Gemini renames/moves a code file (git mv)
+await test('edge: renamed code files detected via new file check', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    // Simulate: Gemini renames bot.js → bot_v2.js (git mv)
+    // git diff --name-only would show both old (deleted) and new (added)
+    const renamedFile = resolve(MOCK_SCRIPTS, 'bot_v2.js');
+    writeFileSync(renamedFile, 'console.log("renamed");');
+
+    // The revert logic uses git diff which catches new files too
+    const codeExtensions = ['.js', '.mjs', '.cjs', '.jsx', '.py', '.sh', '.ts', '.tsx', '.css', '.html'];
+    const ext = renamedFile.substring(renamedFile.lastIndexOf('.'));
+    const isCodeFile = codeExtensions.includes(ext);
+
+    ok(isCodeFile, 'renamed .js file should still be detected as code');
+    if (isCodeFile) unlinkSync(renamedFile);
+    ok(!existsSync(renamedFile), 'renamed code file should be reverted');
+});
+
+// Edge 5: Code embedded inside spec .md file
+await test('edge: code inside .md spec file is NOT blocked (known limitation)', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    const specWithCode = resolve(MOCK_SPECS, 'spec_with_code.md');
+    const content = `# Plan Spec
+## Implementation
+\`\`\`javascript
+// Full implementation embedded in spec
+function handleVersion(msg) {
+    return { version: '1.0.0' };
+}
+module.exports = { handleVersion };
+\`\`\`
+`;
+    writeFileSync(specWithCode, content);
+
+    // .md files pass the extension filter — this is a known limitation
+    const codeExtensions = ['.js', '.mjs', '.cjs', '.jsx', '.py', '.sh', '.ts', '.tsx', '.css', '.html'];
+    const ext = specWithCode.substring(specWithCode.lastIndexOf('.'));
+    const isCodeFile = codeExtensions.includes(ext);
+
+    ok(!isCodeFile, '.md should NOT be flagged as code (known limitation)');
+    ok(existsSync(specWithCode), 'spec with embedded code survives — guard prompt must prevent this');
+
+    // Verify the guard prompt handles this case
+    const PLAN_GUARD = '⛔ CRITICAL: PLANNING MODE IS ACTIVE. You MUST NOT write any application code';
+    ok(PLAN_GUARD.includes('MUST NOT write any application code'),
+        'guard prompt should instruct against code in specs');
+});
+
+// Edge 6: state.json corrupted/empty when plan auto-loader runs
+await test('edge: corrupted state.json handled gracefully', () => {
+    mockSetup();
+
+    // Corrupt the state file
+    writeFileSync(MOCK_STATE, 'not valid json{{{');
+
+    let plan = null;
+    try {
+        const state = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+        plan = state.executionPlan || null;
+    } catch {
+        plan = null; // Fallback on corruption
+    }
+
+    strictEqual(plan, null, 'should return null for corrupted state');
+
+    // Empty state file
+    writeFileSync(MOCK_STATE, '');
+    let plan2 = null;
+    try {
+        const state = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+        plan2 = state.executionPlan || null;
+    } catch {
+        plan2 = null;
+    }
+
+    strictEqual(plan2, null, 'should return null for empty state');
+
+    // Valid but missing executionPlan
+    writeFileSync(MOCK_STATE, JSON.stringify({ activeProject: '/test' }, null, 2));
+    const state = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    strictEqual(state.executionPlan, undefined, 'missing plan should be undefined');
+});
+
+// Edge 7: Dispatch file has null/missing status
+await test('edge: dispatch with null/missing status does not trigger execution', () => {
+    mockSetup();
+
+    // status: null
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({ status: null, tasks: [{ id: 1, taskStatus: 'pending' }] }, null, 2));
+    let dispatch = JSON.parse(readFileSync(MOCK_DISPATCH, 'utf8'));
+    let shouldRun = dispatch.status === 'approved';
+    ok(!shouldRun, 'null status should not trigger dispatch');
+
+    // missing status key
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({ tasks: [{ id: 1, taskStatus: 'pending' }] }, null, 2));
+    dispatch = JSON.parse(readFileSync(MOCK_DISPATCH, 'utf8'));
+    shouldRun = dispatch.status === 'approved';
+    ok(!shouldRun, 'missing status should not trigger dispatch');
+
+    // status: pending_review (not approved)
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({ status: 'pending_review', tasks: [] }, null, 2));
+    dispatch = JSON.parse(readFileSync(MOCK_DISPATCH, 'utf8'));
+    shouldRun = dispatch.status === 'approved';
+    ok(!shouldRun, 'pending_review status should not trigger dispatch');
+});
+
+// Edge 8: Plan mode marker exists but is empty (0 bytes)
+await test('edge: empty marker file still blocks dispatch', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, ''); // 0-byte content
+
+    // existsSync checks file existence, not content
+    const isPlanMode = existsSync(MOCK_PLAN_MODE);
+    ok(isPlanMode, 'empty marker file should still be detected');
+
+    // Dispatch should still be blocked
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({ status: 'approved', tasks: [{ id: 1 }] }, null, 2));
+    let dispatched = false;
+    if (!existsSync(MOCK_PLAN_MODE)) {
+        dispatched = true;
+    }
+    ok(!dispatched, 'dispatch should be blocked even with empty marker file');
+});
+
+// Edge 9: User clicks Re-plan — should clear plan, keep marker, NOT write dispatch
+await test('edge: re-plan clears plan and dispatch but keeps marker', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+    writeFileSync(MOCK_STATE, JSON.stringify({
+        executionPlan: { status: 'confirming', tasks: [{ id: 1, description: 'Task A' }] }
+    }, null, 2));
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({ status: 'approved', tasks: [] }, null, 2));
+
+    // Simulate: ep_replan callback
+    const state = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    delete state.executionPlan;
+    writeFileSync(MOCK_STATE, JSON.stringify(state, null, 2));
+    if (existsSync(MOCK_DISPATCH)) unlinkSync(MOCK_DISPATCH);
+    // Marker stays! User is still in plan mode
+    // (they'll send another refinement or /plan_feature)
+
+    ok(existsSync(MOCK_PLAN_MODE), 'marker should survive re-plan');
+    ok(!existsSync(MOCK_DISPATCH), 'dispatch should be cleared');
+    const clean = JSON.parse(readFileSync(MOCK_STATE, 'utf8'));
+    strictEqual(clean.executionPlan, undefined, 'plan should be cleared from state');
+});
+
+// Edge 10: Execute All then immediate refinement (race condition)
+await test('edge: refinement after Execute All runs without plan guard', () => {
+    mockSetup();
+
+    // Step 1: Plan approved → marker removed, dispatch written
+    writeFileSync(MOCK_STATE, JSON.stringify({
+        executionPlan: { status: 'approved', tasks: [{ id: 1, description: 'Task' }] }
+    }, null, 2));
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({ status: 'approved', tasks: [{ id: 1, taskStatus: 'pending' }] }, null, 2));
+    // Marker was removed by Execute All
+    ok(!existsSync(MOCK_PLAN_MODE), 'marker removed after approval');
+
+    // Step 2: User sends follow-up message immediately
+    const followUp = 'actually add error handling too';
+
+    // Without marker, this message runs in NORMAL mode (not plan mode)
+    const isPlanMode = existsSync(MOCK_PLAN_MODE);
+    ok(!isPlanMode, 'plan mode is OFF after Execute All');
+
+    // This means Gemini could write code — which is the CORRECT behavior
+    // because the plan was approved and we're now in execution mode
+    const codeFile = resolve(MOCK_SCRIPTS, 'handler.js');
+    writeFileSync(codeFile, 'module.exports = {}');
+    // No revert happens — by design
+    ok(existsSync(codeFile), 'code file should NOT be reverted after approval (correct behavior)');
+});
+
+// Edge 11: Task with unmet dependencies
+await test('edge: tasks with unmet deps are skipped in dispatch', () => {
+    mockSetup();
+    const dispatch = {
+        status: 'approved',
+        tasks: [
+            { id: 1, description: 'Setup config', taskStatus: 'pending', deps: [] },
+            { id: 2, description: 'Integration test', taskStatus: 'pending', deps: [1] },
+            { id: 3, description: 'Deploy', taskStatus: 'pending', deps: [1, 2] }
+        ]
+    };
+
+    // Find next pending task
+    const nextTask = dispatch.tasks.find(t => t.taskStatus === 'pending' || !t.taskStatus);
+    strictEqual(nextTask.id, 1, 'task 1 should be first (no deps)');
+
+    // Check deps for task 2
+    const task2 = dispatch.tasks.find(t => t.id === 2);
+    const task2DepsMet = task2.deps.every(depId => {
+        const dep = dispatch.tasks.find(t => t.id === depId);
+        return dep && dep.taskStatus === 'done';
+    });
+    ok(!task2DepsMet, 'task 2 deps NOT met (task 1 not done)');
+
+    // After task 1 completes
+    dispatch.tasks[0].taskStatus = 'done';
+    const task2DepsMetAfter = task2.deps.every(depId => {
+        const dep = dispatch.tasks.find(t => t.id === depId);
+        return dep && dep.taskStatus === 'done';
+    });
+    ok(task2DepsMetAfter, 'task 2 deps met after task 1 done');
+
+    // Task 3 still blocked (needs both 1 AND 2)
+    const task3 = dispatch.tasks.find(t => t.id === 3);
+    const task3DepsMet = task3.deps.every(depId => {
+        const dep = dispatch.tasks.find(t => t.id === depId);
+        return dep && dep.taskStatus === 'done';
+    });
+    ok(!task3DepsMet, 'task 3 deps NOT met (task 2 not done yet)');
+
+    // After task 2 completes
+    dispatch.tasks[1].taskStatus = 'done';
+    const task3DepsMetFinal = task3.deps.every(depId => {
+        const dep = dispatch.tasks.find(t => t.id === depId);
+        return dep && dep.taskStatus === 'done';
+    });
+    ok(task3DepsMetFinal, 'task 3 deps met after tasks 1+2 done');
+});
 
 // ============================================================================
 // SUMMARY

@@ -393,8 +393,8 @@ Rules for the reply file:
 
                         # Plan mode enforcement: revert any code file changes
                         if [ "$IS_PLAN_FEATURE" = true ]; then
-                            CODE_FILES=$(git diff --name-only --cached -- '*.js' '*.py' '*.sh' '*.ts' '*.css' '*.html' 2>/dev/null)
-                            UNSTAGED_CODE=$(git diff --name-only -- '*.js' '*.py' '*.sh' '*.ts' '*.css' '*.html' 2>/dev/null)
+                            CODE_FILES=$(git diff --name-only --cached -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.py' '*.sh' '*.ts' '*.tsx' '*.css' '*.html' 2>/dev/null)
+                            UNSTAGED_CODE=$(git diff --name-only -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.py' '*.sh' '*.ts' '*.tsx' '*.css' '*.html' 2>/dev/null)
                             ALL_CODE="$CODE_FILES$UNSTAGED_CODE"
                             if [ -n "$ALL_CODE" ]; then
                                 echo "🔒 Plan mode: reverting code file changes:" >&2
