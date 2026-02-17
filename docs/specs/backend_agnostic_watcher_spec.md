@@ -31,6 +31,52 @@ Make `watcher.sh` support both Gemini CLI and Kilo CLI as interchangeable backen
 
 ---
 
+## How Workflows Transfer Between Backends
+
+### Why it "just works"
+
+The watcher **does not** rely on the CLI agent "knowing" about workflows. It reads workflow files itself and stuffs the content into the prompt:
+
+```bash
+# watcher.sh reads the workflow file
+WORKFLOW_CONTENT=$(cat "$WORKFLOWS_DIR/startup.md")
+
+# Injects the ENTIRE text into the prompt
+TELEGRAM_PROMPT="⚡ Execute this workflow:
+$WORKFLOW_CONTENT
+---
+CRITICAL RULES: ..."
+
+# Both backends receive the SAME prompt
+gemini --yolo -p "$TELEGRAM_PROMPT"   # or:
+kilo run --auto "$TELEGRAM_PROMPT"
+```
+
+The agent never "reads" workflow files — it just sees a text blob saying "do these steps." **Workflows, memory-bank, and the SOP all remain unchanged.**
+
+### Tool Availability Gap
+
+| Prompt instruction | Gemini CLI | Kilo CLI |
+|---|---|---|
+| "use web search" | ✅ `google_search` (built-in) | ⚠️ Needs MCP web search server |
+| "use write_file" | ✅ Built-in | ✅ Built-in (same name) |
+| "run shell command" | ✅ Built-in | ✅ Built-in (same name) |
+| "read memory-bank/" | ✅ `read_file` | ✅ Built-in (same name) |
+
+**Impact**: Research tasks via Kilo won't have web search unless an MCP server is configured. File/shell operations work identically.
+
+### Optional: SOP Agent Roles (Future Enhancement)
+
+The SOP defines 4 Kilo agent roles (Coordinator, Planner, Developer, Auditor). In VS Code, these are `.kilo/` config entries. For the headless watcher, the `--agent` flag could map to these:
+
+```bash
+kilo run --auto --agent "developer" "$TELEGRAM_PROMPT"
+```
+
+This is **not required** for the initial implementation — the watcher prompt already contains all necessary instructions inline. Agent roles can be added later for better context awareness.
+
+---
+
 ## Proposed Changes
 
 ### Coupling Points Identified
