@@ -57,6 +57,42 @@ write_to_outbox() {
     fi
 }
 
+# --- Helper: Write document attachment to outbox ---
+write_to_outbox_file() {
+    local filepath="$1"
+    local caption="$2"
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local msg_id="doc_$(date +%s)"
+
+    if [ -f "$OUTBOX" ]; then
+        jq --arg id "$msg_id" --arg ts "$timestamp" --arg fp "$filepath" --arg cap "$caption" \
+            '.messages += [{"id": $id, "timestamp": $ts, "from": "agent", "type": "document", "filePath": $fp, "caption": $cap, "sent": false}]' \
+            "$OUTBOX" > "${OUTBOX}.tmp" && mv "${OUTBOX}.tmp" "$OUTBOX"
+    else
+        jq -n --arg id "$msg_id" --arg ts "$timestamp" --arg fp "$filepath" --arg cap "$caption" \
+            '{"messages": [{"id": $id, "timestamp": $ts, "from": "agent", "type": "document", "filePath": $fp, "caption": $cap, "sent": false}]}' > "$OUTBOX"
+    fi
+}
+
+# --- Helper: Write text with inline keyboard to outbox ---
+write_to_outbox_with_markup() {
+    local text="$1"
+    local markup_json="$2"  # JSON string for reply_markup
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local msg_id="btn_$(date +%s)"
+
+    if [ -f "$OUTBOX" ]; then
+        jq --arg id "$msg_id" --arg ts "$timestamp" --arg txt "$text" --argjson rm "$markup_json" \
+            '.messages += [{"id": $id, "timestamp": $ts, "from": "agent", "text": $txt, "reply_markup": $rm, "sent": false}]' \
+            "$OUTBOX" > "${OUTBOX}.tmp" && mv "${OUTBOX}.tmp" "$OUTBOX"
+    else
+        jq -n --arg id "$msg_id" --arg ts "$timestamp" --arg txt "$text" --argjson rm "$markup_json" \
+            '{"messages": [{"id": $id, "timestamp": $ts, "from": "agent", "text": $txt, "reply_markup": $rm, "sent": false}]}' > "$OUTBOX"
+    fi
+}
+
 while true; do
     if [ -f "$INBOX" ] && command -v jq &>/dev/null; then
         UNREAD_COUNT=$(jq '[.messages[]? | select(.read == false)] | length' "$INBOX" 2>/dev/null || echo "0")
@@ -85,6 +121,7 @@ while true; do
             # Check for session lifecycle commands
             IS_NEW_SESSION=false
             IS_SHUTDOWN=false
+            IS_PLAN_FEATURE=false
             if echo "$USER_MESSAGES" | grep -qi "^/new"; then
                 IS_NEW_SESSION=true
                 USER_MESSAGES=$(echo "$USER_MESSAGES" | sed 's|^/new[[:space:]]*||i')
@@ -94,6 +131,9 @@ while true; do
             fi
             if echo "$USER_MESSAGES" | grep -qi "^/shutdown"; then
                 IS_SHUTDOWN=true  # /shutdown archives branch after running
+            fi
+            if echo "$USER_MESSAGES" | grep -qi "^/plan_feature\|^/plan "; then
+                IS_PLAN_FEATURE=true
             fi
 
             # Tiered model routing
@@ -318,12 +358,80 @@ Rules for the reply file:
                 # Commit changes on branch
                 if git rev-parse --git-dir >/dev/null 2>&1; then
                     if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+                        # Exclude runtime files from commit
+                        git reset HEAD -- .gemini/wa_session.lock 2>/dev/null || true
+                        git checkout -- .gemini/wa_session.lock 2>/dev/null || true
                         git add -A 2>/dev/null
+                        git reset HEAD -- .gemini/wa_session.lock 2>/dev/null || true
                         git commit -m "telegram: session $(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
                         echo "💾 Changes committed on: $ACTIVE_BRANCH" >&2
                         write_to_outbox "💾 Changes committed"
                     else
                         echo "📭 No changes made" >&2
+                    fi
+
+                    # /plan_feature: send spec file + auto-load execution plan
+                    if [ "$IS_PLAN_FEATURE" = true ]; then
+                        # Find the newest spec file created by Gemini
+                        SPEC_FILE=$(cd "$ACTIVE_PROJECT" && find docs/specs -name "*_spec.md" -newer .gemini/wa_inbox.json 2>/dev/null | head -1)
+                        if [ -n "$SPEC_FILE" ]; then
+                            write_to_outbox_file "$ACTIVE_PROJECT/$SPEC_FILE" "📎 Plan spec — review and reply with feedback, or /review_plan to approve"
+                            echo "📎 Spec file queued: $SPEC_FILE" >&2
+                        fi
+
+                        # Auto-load execution plan from antigravity_tasks.md
+                        TASKS_FILE="$ACTIVE_PROJECT/antigravity_tasks.md"
+                        if [ -f "$TASKS_FILE" ] && [ -n "$SPEC_FILE" ]; then
+                            python3 -c "
+import json, re, sys
+
+tasks_path = sys.argv[1]
+state_path = sys.argv[2]
+spec_ref = sys.argv[3]
+
+# Read tasks file and find To Do items matching this spec
+with open(tasks_path) as f:
+    content = f.read()
+
+# Parse To Do items with the spec ref
+pattern = r'- \[[ ]\] \[([^\]]+)\] \[([^\]]+)\] (.+?) \[Ref: ' + re.escape(spec_ref) + r'\] \[Difficulty: (\d+)\]'
+matches = re.findall(pattern, content)
+
+if not matches:
+    sys.exit(0)
+
+tasks = []
+for i, (cat, topic, desc, diff) in enumerate(matches, 1):
+    tasks.append({
+        'id': i,
+        'description': desc.strip(),
+        'summary': f'{cat}/{topic}',
+        'difficulty': int(diff),
+        'tier': 'mid' if int(diff) <= 5 else 'top',
+        'platform': 'gemini',
+        'model': 'gemini-2.5-flash',
+        'parallel': False,
+        'deps': list(range(1, i)) if i > 1 else [],
+        'status': 'pending'
+    })
+
+# Load state and write execution plan
+with open(state_path) as f:
+    state = json.load(f)
+
+state['executionPlan'] = {
+    'status': 'pending_review',
+    'specRef': spec_ref,
+    'tasks': tasks
+}
+
+with open(state_path, 'w') as f:
+    json.dump(state, f, indent=2)
+
+print(f'Loaded {len(tasks)} tasks into execution plan')
+" "$TASKS_FILE" "$ACTIVE_PROJECT/.gemini/state.json" "$SPEC_FILE" 2>&1 || true
+                            echo "📋 Execution plan auto-loaded into state.json" >&2
+                        fi
                     fi
 
                     # /shutdown → switch to main, keep branch for review/merge
@@ -548,12 +656,11 @@ $TASK_REPORT"
                             STATUS_LINE="❌ Task $TASK_ID error: $TASK_ERROR ($DONE_COUNT/$TASK_COUNT)"
                         fi
 
-                        write_to_outbox "$STATUS_LINE
+                        STEP_MARKUP='{"inline_keyboard":[[{"text":"▶️ Next Task","callback_data":"ep_next"},{"text":"🛑 Stop","callback_data":"ep_stop"}]]}'
+                        write_to_outbox_with_markup "$STATUS_LINE
 
 📋 Report:
-$TASK_REPORT
-
-⏸️ Paused — tap ▶️ Next Task to continue or 🛑 Stop."
+$TASK_REPORT" "$STEP_MARKUP"
                         echo "⏸️ $(date +%H:%M:%S) | Task $TASK_ID done, waiting for continue signal" >&2
 
                         # Wait for continue signal (bot writes wa_dispatch_continue.json)

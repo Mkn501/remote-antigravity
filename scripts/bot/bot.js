@@ -937,21 +937,46 @@ setInterval(async () => {
     let dirty = false;
     for (const msg of unsent) {
         try {
+            // --- Document attachment (watcher sends spec files) ---
+            if (msg.type === 'document' && msg.filePath) {
+                if (existsSync(msg.filePath)) {
+                    await bot.sendDocument(CHAT_ID, msg.filePath, {
+                        caption: (msg.caption || '📎 Document').substring(0, 1024)
+                    });
+                    console.log(`📤 ${new Date().toISOString()} | 📎 DOC | ${msg.filePath}`);
+                } else {
+                    console.error(`❌ Document not found: ${msg.filePath}`);
+                }
+                msg.sent = true;
+                dirty = true;
+                continue;
+            }
+
+            // --- Text message (with optional inline keyboard) ---
             const text = msg.text || '(empty response)';
+            const opts = {};
+            if (msg.reply_markup) {
+                opts.reply_markup = msg.reply_markup;
+            }
 
             if (text.length > FILE_SEND_THRESHOLD) {
                 // Long reply → send as downloadable .md file
                 await sendAsFile(text);
+                // If there's also a reply_markup, send it as a separate short message
+                if (msg.reply_markup) {
+                    await bot.sendMessage(CHAT_ID, '👆 Full report attached above.', opts);
+                }
             } else {
-                // Short reply → send as text message
-                await bot.sendMessage(CHAT_ID, text);
+                // Short reply → send as text message (with optional inline keyboard)
+                await bot.sendMessage(CHAT_ID, text, opts);
             }
 
             msg.sent = true;
             dirty = true;
 
             const preview = text.length > 80 ? text.substring(0, 77) + '...' : text;
-            console.log(`📤 ${new Date().toISOString()} | ${text.length > FILE_SEND_THRESHOLD ? '📄 FILE' : '💬 TEXT'} | ${preview}`);
+            const typeLabel = text.length > FILE_SEND_THRESHOLD ? '📄 FILE' : (msg.reply_markup ? '🔘 BTN' : '💬 TEXT');
+            console.log(`📤 ${new Date().toISOString()} | ${typeLabel} | ${preview}`);
         } catch (err) {
             console.error(`❌ Send failed: ${err.message}`);
             break;
