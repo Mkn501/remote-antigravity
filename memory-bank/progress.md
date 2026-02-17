@@ -3,7 +3,7 @@
 ## Status Dashboard
 - **Health**: 🟢 Healthy
 - **Phase**: Operational / Dogfooding
-- **Last Updated**: 2026-02-16
+- **Last Updated**: 2026-02-17
 
 ## Milestones
 - [x] **M1: Project Setup** — Scaffold from template, define scope
@@ -18,6 +18,7 @@
 - [x] **M10: One-Script Startup** — `start.sh` with start/stop/status
 - [x] **M11: Security Review** — Full audit with OpenClaw.ai comparison
 - [x] **M12: Workflow Hardening** — Decoupled validation/merge, version footers, template v2.0.0 sync
+- [x] **M13: Regression Tests & CLI Research** — 45-test regression suite, Kilo CLI spike, backend-agnostic watcher spec
 
 ## Known Risks
 - `--yolo` mode auto-approves all Gemini tool calls — accepted for single-user personal use.
