@@ -269,10 +269,18 @@ Rules for the reply file:
                     # Normal message (no workflow)
                     PLAN_GUARD=""
                     if [ "$IS_PLAN_FEATURE" = true ]; then
+                        # Find the active spec file for context
+                        ACTIVE_SPEC=$(python3 -c "import json; s=json.load(open('$ACTIVE_PROJECT/.gemini/state.json')); print(s.get('executionPlan',{}).get('specRef',''))" 2>/dev/null || echo "")
+                        [ -z "$ACTIVE_SPEC" ] && ACTIVE_SPEC=$(cd "$ACTIVE_PROJECT" && find docs/specs -name "*.md" -not -name "_*" -type f 2>/dev/null | sort -t/ -k3 | tail -1)
+                        SPEC_HINT=""
+                        [ -n "$ACTIVE_SPEC" ] && SPEC_HINT="
+- The ACTIVE spec file is: $ACTIVE_SPEC — this is the ONLY spec you should edit."
                         PLAN_GUARD="
 ⛔ CRITICAL: PLANNING MODE IS ACTIVE.
-- You are refining an existing plan. The spec is in docs/specs/ — read it, update it per the user's feedback.
+- You are refining an existing plan.${SPEC_HINT}
+- Read the spec file, update it per the user's feedback below.
 - You MUST NOT write any application code (.js, .py, .sh, etc). Only update specs, tasks, and documentation.
+- Do NOT touch any other spec files — only the active spec listed above.
 - After updating the spec, write a short summary of changes to .gemini/telegram_reply.txt
 - If the user says 'looks good' or similar approval, just acknowledge — do NOT implement anything.
 "
