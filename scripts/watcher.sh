@@ -418,7 +418,7 @@ Rules for the reply file:
                     # /plan_feature: send spec file + auto-load execution plan
                     if [ "$IS_PLAN_FEATURE" = true ]; then
                         # Find the newest spec file created by Gemini
-                        SPEC_FILE=$(cd "$ACTIVE_PROJECT" && find docs/specs -name "*_spec.md" -newer .gemini/wa_inbox.json 2>/dev/null | head -1)
+                        SPEC_FILE=$(cd "$ACTIVE_PROJECT" && find docs/specs -name "*.md" -not -name "_*" -newer .gemini/wa_inbox.json 2>/dev/null | head -1)
                         if [ -n "$SPEC_FILE" ]; then
                             # Copy as .txt for Telegram readability (.md not rendered in Telegram)
                             SPEC_BASENAME=$(basename "$SPEC_FILE" .md)
