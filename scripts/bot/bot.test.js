@@ -545,6 +545,207 @@ await test('watcher.sh has branch management', () => {
     ok(watcher.includes('telegram/session-'), 'watcher should archive sessions');
 });
 
+// ---- 12. Execution Plan ----
+console.log('\n── Execution Plan ──');
+
+const DISPATCH = resolve(TEST_DIR, 'wa_dispatch.json');
+
+function loadExecutionPlan() {
+    const state = getState();
+    return state.executionPlan || null;
+}
+
+function saveExecutionPlan(plan) {
+    updateState(s => s.executionPlan = plan);
+}
+
+function writeDispatch(plan) {
+    const dispatch = {
+        timestamp: new Date().toISOString(),
+        status: 'approved',
+        tasks: plan.tasks.map(t => ({
+            id: t.id, description: t.description,
+            platform: t.platform, model: t.model,
+            parallel: t.parallel, deps: t.deps
+        }))
+    };
+    atomicWrite(DISPATCH, dispatch);
+}
+
+const PLATFORM_MODELS = {
+    'gemini': [
+        { id: 'gemini-2.5-flash', label: '⚡ Flash 2.5' },
+        { id: 'gemini-2.5-pro', label: '🧠 Pro 2.5' },
+        { id: 'gemini-3-pro-preview', label: '🧠 Pro 3.0' },
+        { id: 'gemini-2.0-flash-lite', label: '🆓 Flash Lite' }
+    ],
+    'jules': []
+};
+
+const TIER_EMOJI = { 'top': '🧠', 'mid': '⚡', 'free': '🆓' };
+
+function formatExecutionPlan(plan) {
+    const lines = [`📋 Execution Plan (${plan.tasks.length} tasks)\n`];
+    for (const t of plan.tasks) {
+        const tierEmoji = TIER_EMOJI[t.tier] || '❓';
+        const platform = t.platform || '—';
+        const model = t.model || (t.platform === 'jules' ? 'GitHub' : '—');
+        const parallel = t.parallel ? '✅' : '❌';
+        const deps = t.deps?.length ? `deps: ${t.deps.join(', ')}` : '';
+        lines.push(`${t.id}. ${t.description}  ${tierEmoji} ${platform}: ${model}  ∥${parallel} ${deps}`);
+    }
+    return lines.join('\n');
+}
+
+await test('execution plan: initial state has no plan', () => {
+    const plan = loadExecutionPlan();
+    strictEqual(plan, null);
+});
+
+await test('execution plan: save and load round-trip', () => {
+    const plan = {
+        status: 'pending_approval',
+        defaultPlatform: null,
+        defaultModel: null,
+        tasks: [
+            { id: 1, description: 'Add OAuth config', tier: 'mid', platform: null, model: null, parallel: true, deps: [] },
+            { id: 2, description: 'Integration test', tier: 'top', platform: null, model: null, parallel: false, deps: [1] }
+        ]
+    };
+    saveExecutionPlan(plan);
+    const loaded = loadExecutionPlan();
+    strictEqual(loaded.tasks.length, 2);
+    strictEqual(loaded.status, 'pending_approval');
+    strictEqual(loaded.tasks[1].deps[0], 1);
+});
+
+await test('execution plan: platform + model assignment', () => {
+    // Create plan first (each test is isolated)
+    const plan = {
+        status: 'pending_approval',
+        defaultPlatform: null,
+        defaultModel: null,
+        tasks: [
+            { id: 1, description: 'Add OAuth config', tier: 'mid', platform: null, model: null, parallel: true, deps: [] },
+            { id: 2, description: 'Integration test', tier: 'top', platform: null, model: null, parallel: false, deps: [1] }
+        ]
+    };
+    plan.defaultPlatform = 'gemini';
+    plan.defaultModel = 'gemini-2.5-flash';
+    plan.tasks.forEach(t => { t.platform = 'gemini'; t.model = 'gemini-2.5-flash'; });
+    plan.status = 'confirming';
+    saveExecutionPlan(plan);
+
+    const loaded = loadExecutionPlan();
+    strictEqual(loaded.status, 'confirming');
+    strictEqual(loaded.tasks[0].platform, 'gemini');
+    strictEqual(loaded.tasks[0].model, 'gemini-2.5-flash');
+    strictEqual(loaded.tasks[1].platform, 'gemini');
+});
+
+await test('execution plan: override single task', () => {
+    const plan = {
+        status: 'confirming',
+        defaultPlatform: 'gemini',
+        defaultModel: 'gemini-2.5-flash',
+        tasks: [
+            { id: 1, description: 'Add config', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash', parallel: true, deps: [] },
+            { id: 2, description: 'Integration test', tier: 'top', platform: 'gemini', model: 'gemini-2.5-flash', parallel: false, deps: [1] }
+        ]
+    };
+    // Override task 2 to Pro 3.0
+    plan.tasks[1].model = 'gemini-3-pro-preview';
+    saveExecutionPlan(plan);
+
+    const loaded = loadExecutionPlan();
+    strictEqual(loaded.tasks[0].model, 'gemini-2.5-flash', 'task 1 unchanged');
+    strictEqual(loaded.tasks[1].model, 'gemini-3-pro-preview', 'task 2 overridden');
+});
+
+await test('execution plan: approve writes dispatch', () => {
+    const plan = {
+        status: 'confirming',
+        defaultPlatform: 'gemini',
+        defaultModel: 'gemini-2.5-flash',
+        tasks: [
+            { id: 1, description: 'Add config', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash', parallel: true, deps: [] },
+            { id: 2, description: 'Integration test', tier: 'top', platform: 'gemini', model: 'gemini-3-pro-preview', parallel: false, deps: [1] }
+        ]
+    };
+    plan.status = 'approved';
+    saveExecutionPlan(plan);
+    writeDispatch(plan);
+
+    ok(existsSync(DISPATCH), 'dispatch file should exist');
+    const dispatch = readJsonSafe(DISPATCH, {});
+    strictEqual(dispatch.status, 'approved');
+    strictEqual(dispatch.tasks.length, 2);
+    strictEqual(dispatch.tasks[0].platform, 'gemini');
+    ok(dispatch.timestamp, 'dispatch should have timestamp');
+});
+
+await test('execution plan: re-plan clears state', () => {
+    updateState(s => { delete s.executionPlan; });
+    if (existsSync(DISPATCH)) unlinkSync(DISPATCH);
+
+    const plan = loadExecutionPlan();
+    strictEqual(plan, null);
+    ok(!existsSync(DISPATCH), 'dispatch file should be cleared');
+});
+
+await test('execution plan: formatExecutionPlan output', () => {
+    const plan = {
+        tasks: [
+            { id: 1, description: 'Add config', tier: 'mid', platform: 'gemini', model: 'gemini-2.5-flash', parallel: true, deps: [] },
+            { id: 2, description: 'Write test', tier: 'top', platform: 'gemini', model: 'gemini-3-pro-preview', parallel: false, deps: [1] }
+        ]
+    };
+    const text = formatExecutionPlan(plan);
+    ok(text.includes('📋 Execution Plan (2 tasks)'));
+    ok(text.includes('1. Add config'));
+    ok(text.includes('⚡'));
+    ok(text.includes('2. Write test'));
+    ok(text.includes('🧠'));
+    ok(text.includes('deps: 1'));
+});
+
+await test('execution plan: PLATFORM_MODELS registry is valid', () => {
+    ok(PLATFORM_MODELS.gemini.length >= 3, 'gemini should have at least 3 models');
+    strictEqual(PLATFORM_MODELS.jules.length, 0, 'jules should have no models');
+    for (const m of PLATFORM_MODELS.gemini) {
+        ok(m.id, 'model should have id');
+        ok(m.label, 'model should have label');
+    }
+});
+
+await test('execution plan: jules platform skips model selection', () => {
+    const plan = {
+        status: 'selecting_platform',
+        defaultPlatform: null,
+        defaultModel: null,
+        tasks: [{ id: 1, description: 'Fix typo', tier: 'free', platform: null, model: null, parallel: true, deps: [] }]
+    };
+    // Simulate jules selection
+    plan.defaultPlatform = 'jules';
+    plan.tasks.forEach(t => { t.platform = 'jules'; t.model = null; });
+    plan.status = 'confirming';
+
+    strictEqual(plan.status, 'confirming', 'should skip to confirming for jules');
+    strictEqual(plan.tasks[0].model, null, 'jules tasks have no model');
+});
+
+await test('execution plan: callback data format validation', () => {
+    const callbacks = [
+        'ep_platform:gemini', 'ep_platform:jules',
+        'ep_model:gemini-2.5-flash', 'ep_execute', 'ep_override',
+        'ep_task:1', 'ep_task_plat:1:gemini', 'ep_task_model:1:gemini-2.5-flash',
+        'ep_replan'
+    ];
+    for (const cb of callbacks) {
+        ok(cb.length <= 64, `callback data "${cb}" should be under 64 bytes (Telegram limit)`);
+    }
+});
+
 // ============================================================================
 // SUMMARY
 // ============================================================================

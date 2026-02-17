@@ -8,6 +8,7 @@
 //   /sprint        — Start Sprint Mode
 //   /stop          — Send STOP signal
 //   /status        — Check status
+//   /plan          — Review & approve execution plan
 //   /project <name> — Switch active project
 //   /add <name> <path> — Register a new project
 //   /list          — List available projects
@@ -45,6 +46,7 @@ const CENTRAL_DIR = resolve(DEFAULT_PROJECT_DIR, '.gemini');
 const INBOX = resolve(CENTRAL_DIR, 'wa_inbox.json');
 const OUTBOX = resolve(CENTRAL_DIR, 'wa_outbox.json');
 const STATE_FILE = resolve(CENTRAL_DIR, 'state.json');
+const DISPATCH_FILE = resolve(CENTRAL_DIR, 'wa_dispatch.json');
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_MSG_LEN = 4096;
@@ -160,6 +162,9 @@ bot.onText(/^\/help/, async (msg) => {
         '/update_roadmap — Update roadmap docs',
         '/new — Archive branch, start fresh',
         '',
+        '📋 Execution Plan:',
+        '/plan — Review & approve execution plan',
+        '',
         '🔧 Bot Commands (instant):',
         '/status — System status',
         '/stop — Halt agent',
@@ -181,6 +186,64 @@ const MODEL_OPTIONS = [
     { id: 'gemini-2.0-flash-lite', label: '4️⃣ Flash Lite', short: 'Flash Lite' },
 ];
 
+// --- Platform → Model Registry (for tiered execution) ---
+const PLATFORM_MODELS = {
+    'gemini': [
+        { id: 'gemini-2.5-flash', label: '⚡ Flash 2.5' },
+        { id: 'gemini-2.5-pro', label: '🧠 Pro 2.5' },
+        { id: 'gemini-3-pro-preview', label: '🧠 Pro 3.0' },
+        { id: 'gemini-2.0-flash-lite', label: '🆓 Flash Lite' }
+    ],
+    'jules': [] // No model choice — GitHub-managed
+};
+
+const PLATFORM_LABELS = {
+    'gemini': '💻 Gemini CLI',
+    'jules': '🤖 Jules'
+};
+
+const TIER_EMOJI = { 'top': '🧠', 'mid': '⚡', 'free': '🆓' };
+
+// --- Execution Plan Helpers ---
+
+function loadExecutionPlan() {
+    const state = getState();
+    return state.executionPlan || null;
+}
+
+function saveExecutionPlan(plan) {
+    updateState(s => s.executionPlan = plan);
+}
+
+function formatExecutionPlan(plan) {
+    const lines = [`📋 Execution Plan (${plan.tasks.length} tasks)\n`];
+    for (const t of plan.tasks) {
+        const tierEmoji = TIER_EMOJI[t.tier] || '❓';
+        const platform = t.platform ? PLATFORM_LABELS[t.platform] || t.platform : '—';
+        const model = t.model || (t.platform === 'jules' ? 'GitHub' : '—');
+        const parallel = t.parallel ? '✅' : '❌';
+        const deps = t.deps?.length ? `deps: ${t.deps.join(', ')}` : '';
+        lines.push(`${t.id}. ${t.description}  ${tierEmoji} ${platform}: ${model}  ∥${parallel} ${deps}`);
+    }
+    return lines.join('\n');
+}
+
+function writeDispatch(plan) {
+    const dispatch = {
+        timestamp: new Date().toISOString(),
+        status: 'approved',
+        tasks: plan.tasks.map(t => ({
+            id: t.id,
+            description: t.description,
+            platform: t.platform,
+            model: t.model,
+            parallel: t.parallel,
+            deps: t.deps
+        }))
+    };
+    atomicWrite(DISPATCH_FILE, dispatch);
+}
+
 bot.onText(/^\/model$/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     const state = readJsonSafe(STATE_FILE, {});
@@ -197,9 +260,53 @@ bot.onText(/^\/model$/, async (msg) => {
     });
 });
 
+// --- /plan Command: Start Execution Plan Approval ---
+
+bot.onText(/^\/plan$/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const plan = loadExecutionPlan();
+
+    if (!plan || !plan.tasks?.length) {
+        await bot.sendMessage(CHAT_ID, '📋 No execution plan found.\n\nRun /plan_feature first — the architect will generate a plan and save it to state.json.');
+        return;
+    }
+
+    if (plan.status === 'approved') {
+        await bot.sendMessage(CHAT_ID, `✅ Plan already approved.\n\n${formatExecutionPlan(plan)}\n\nThe watcher will dispatch automatically.`, {
+            reply_markup: {
+                inline_keyboard: [[{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]]
+            }
+        });
+        return;
+    }
+
+    if (plan.status === 'executing') {
+        await bot.sendMessage(CHAT_ID, `⏳ Plan is executing...\n\n${formatExecutionPlan(plan)}`);
+        return;
+    }
+
+    // Start Step 1: Choose default platform
+    plan.status = 'selecting_platform';
+    saveExecutionPlan(plan);
+
+    const platformButtons = Object.keys(PLATFORM_MODELS).map(p => ({
+        text: PLATFORM_LABELS[p] || p,
+        callback_data: `ep_platform:${p}`
+    }));
+
+    await bot.sendMessage(CHAT_ID,
+        `📋 Execution Plan (${plan.tasks.length} tasks)\n\n` +
+        plan.tasks.map(t => `${t.id}. ${t.description}  ${TIER_EMOJI[t.tier] || '❓'}`).join('\n') +
+        '\n\nStep 1: Choose default platform:',
+        { reply_markup: { inline_keyboard: [platformButtons] } }
+    );
+});
+
 bot.on('callback_query', async (query) => {
     // Auth: only accept from configured chat
     if (String(query.message?.chat.id) !== String(CHAT_ID)) return;
+    const chatId = query.message.chat.id;
+    const msgId = query.message.message_id;
 
     if (query.data?.startsWith('model:')) {
         const modelId = query.data.replace('model:', '');
@@ -209,11 +316,9 @@ bot.on('callback_query', async (query) => {
         updateState(s => s.model = modelId);
 
         await bot.answerCallbackQuery(query.id, { text: `Switched to ${modelInfo.short}` });
-        await bot.editMessageText(`🤖 Model switched to: ${modelInfo.short}`, {
-            chat_id: query.message.chat.id,
-            message_id: query.message.message_id
-        });
+        await bot.editMessageText(`🤖 Model switched to: ${modelInfo.short}`, { chat_id: chatId, message_id: msgId });
         console.log(`🤖 ${new Date().toISOString()} | Model → ${modelId}`);
+
     } else if (query.data?.startsWith('project:')) {
         const name = query.data.replace('project:', '');
         const state = getState();
@@ -222,11 +327,238 @@ bot.on('callback_query', async (query) => {
         updateState(s => s.activeProject = state.projects[name]);
 
         await bot.answerCallbackQuery(query.id, { text: `Switched to ${name}` });
-        await bot.editMessageText(`📂 Switched to: ${name}`, {
-            chat_id: query.message.chat.id,
-            message_id: query.message.message_id
-        });
+        await bot.editMessageText(`📂 Switched to: ${name}`, { chat_id: chatId, message_id: msgId });
         console.log(`📂 ${new Date().toISOString()} | Project → ${name}`);
+
+        // --- Execution Plan: Step 1 — Platform selected ---
+    } else if (query.data?.startsWith('ep_platform:')) {
+        const platform = query.data.replace('ep_platform:', '');
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        plan.defaultPlatform = platform;
+
+        // Jules has no model choice — skip to confirmation
+        if (platform === 'jules') {
+            plan.defaultModel = null;
+            plan.tasks.forEach(t => { t.platform = 'jules'; t.model = null; });
+            plan.status = 'confirming';
+            saveExecutionPlan(plan);
+
+            await bot.answerCallbackQuery(query.id, { text: 'Jules selected' });
+            await bot.editMessageText(
+                formatExecutionPlan(plan) + '\n\nAll tasks → Jules (GitHub)',
+                {
+                    chat_id: chatId, message_id: msgId,
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🚀 Execute All', callback_data: 'ep_execute' }, { text: '✏️ Override Task', callback_data: 'ep_override' }],
+                            [{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]
+                        ]
+                    }
+                }
+            );
+            return;
+        }
+
+        // Show Step 2: model selection
+        plan.status = 'selecting_model';
+        saveExecutionPlan(plan);
+
+        const models = PLATFORM_MODELS[platform] || [];
+        const modelButtons = models.map(m => ({
+            text: m.label,
+            callback_data: `ep_model:${m.id}`
+        }));
+        // Split into rows of 2
+        const rows = [];
+        for (let i = 0; i < modelButtons.length; i += 2) {
+            rows.push(modelButtons.slice(i, i + 2));
+        }
+
+        await bot.answerCallbackQuery(query.id, { text: `${PLATFORM_LABELS[platform]}` });
+        await bot.editMessageText(
+            `📋 Default model for ${PLATFORM_LABELS[platform]}:`,
+            { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: rows } }
+        );
+
+        // --- Execution Plan: Step 2 — Model selected ---
+    } else if (query.data?.startsWith('ep_model:')) {
+        const modelId = query.data.replace('ep_model:', '');
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        plan.defaultModel = modelId;
+        plan.tasks.forEach(t => { t.platform = plan.defaultPlatform; t.model = modelId; });
+        plan.status = 'confirming';
+        saveExecutionPlan(plan);
+
+        const modelLabel = PLATFORM_MODELS[plan.defaultPlatform]?.find(m => m.id === modelId)?.label || modelId;
+
+        await bot.answerCallbackQuery(query.id, { text: modelLabel });
+        await bot.editMessageText(
+            formatExecutionPlan(plan) + `\n\n✅ All tasks → ${PLATFORM_LABELS[plan.defaultPlatform]}: ${modelLabel}`,
+            {
+                chat_id: chatId, message_id: msgId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🚀 Execute All', callback_data: 'ep_execute' }, { text: '✏️ Override Task', callback_data: 'ep_override' }],
+                        [{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]
+                    ]
+                }
+            }
+        );
+
+        // --- Execution Plan: Execute All ---
+    } else if (query.data === 'ep_execute') {
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        plan.status = 'approved';
+        saveExecutionPlan(plan);
+        writeDispatch(plan);
+
+        await bot.answerCallbackQuery(query.id, { text: '🚀 Plan approved!' });
+        await bot.editMessageText(
+            `🚀 Plan Approved!\n\n${formatExecutionPlan(plan)}\n\nThe watcher will dispatch tasks automatically.`,
+            { chat_id: chatId, message_id: msgId }
+        );
+        console.log(`🚀 ${new Date().toISOString()} | Execution plan approved (${plan.tasks.length} tasks)`);
+
+        // --- Execution Plan: Override — show task list ---
+    } else if (query.data === 'ep_override') {
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        const taskButtons = plan.tasks.map(t => ({
+            text: `${t.id}. ${t.description}`,
+            callback_data: `ep_task:${t.id}`
+        }));
+        // One button per row
+        const rows = taskButtons.map(b => [b]);
+
+        await bot.answerCallbackQuery(query.id, { text: 'Select task to override' });
+        await bot.editMessageText('✏️ Which task to override?', {
+            chat_id: chatId, message_id: msgId,
+            reply_markup: { inline_keyboard: rows }
+        });
+
+        // --- Execution Plan: Override — task selected, show platforms ---
+    } else if (query.data?.startsWith('ep_task:')) {
+        const taskId = parseInt(query.data.replace('ep_task:', ''), 10);
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        const task = plan.tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        const platformButtons = Object.keys(PLATFORM_MODELS).map(p => ({
+            text: PLATFORM_LABELS[p] || p,
+            callback_data: `ep_task_plat:${taskId}:${p}`
+        }));
+
+        await bot.answerCallbackQuery(query.id, { text: `Task ${taskId}` });
+        await bot.editMessageText(
+            `✏️ Task ${taskId}: ${task.description}\n\nPlatform:`,
+            { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [platformButtons] } }
+        );
+
+        // --- Execution Plan: Override — platform for task, show models ---
+    } else if (query.data?.startsWith('ep_task_plat:')) {
+        const [, taskIdStr, platform] = query.data.split(':');
+        const taskId = parseInt(taskIdStr, 10);
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        const task = plan.tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        task.platform = platform;
+
+        // Jules — no model choice
+        if (platform === 'jules') {
+            task.model = null;
+            plan.status = 'confirming';
+            saveExecutionPlan(plan);
+
+            await bot.answerCallbackQuery(query.id, { text: 'Jules' });
+            await bot.editMessageText(
+                `✅ Updated:\n\n${formatExecutionPlan(plan)}`,
+                {
+                    chat_id: chatId, message_id: msgId,
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🚀 Execute All', callback_data: 'ep_execute' }, { text: '✏️ Override Task', callback_data: 'ep_override' }],
+                            [{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]
+                        ]
+                    }
+                }
+            );
+            return;
+        }
+
+        saveExecutionPlan(plan);
+
+        const models = PLATFORM_MODELS[platform] || [];
+        const modelButtons = models.map(m => ({
+            text: m.label,
+            callback_data: `ep_task_model:${taskId}:${m.id}`
+        }));
+        const rows = [];
+        for (let i = 0; i < modelButtons.length; i += 2) {
+            rows.push(modelButtons.slice(i, i + 2));
+        }
+
+        await bot.answerCallbackQuery(query.id, { text: PLATFORM_LABELS[platform] });
+        await bot.editMessageText(
+            `✏️ Task ${taskId} — Model for ${PLATFORM_LABELS[platform]}:`,
+            { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: rows } }
+        );
+
+        // --- Execution Plan: Override — model for task ---
+    } else if (query.data?.startsWith('ep_task_model:')) {
+        const [, taskIdStr, modelId] = query.data.split(':');
+        const taskId = parseInt(taskIdStr, 10);
+        const plan = loadExecutionPlan();
+        if (!plan) return;
+
+        const task = plan.tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        task.model = modelId;
+        plan.status = 'confirming';
+        saveExecutionPlan(plan);
+
+        const modelLabel = PLATFORM_MODELS[task.platform]?.find(m => m.id === modelId)?.label || modelId;
+
+        await bot.answerCallbackQuery(query.id, { text: modelLabel });
+        await bot.editMessageText(
+            `✅ Updated:\n\n${formatExecutionPlan(plan)}`,
+            {
+                chat_id: chatId, message_id: msgId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🚀 Execute All', callback_data: 'ep_execute' }, { text: '✏️ Override Task', callback_data: 'ep_override' }],
+                        [{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]
+                    ]
+                }
+            }
+        );
+
+        // --- Execution Plan: Re-plan ---
+    } else if (query.data === 'ep_replan') {
+        updateState(s => { delete s.executionPlan; });
+        // Clean up dispatch file if exists
+        if (existsSync(DISPATCH_FILE)) {
+            try { unlinkSync(DISPATCH_FILE); } catch { /* ignore */ }
+        }
+
+        await bot.answerCallbackQuery(query.id, { text: 'Plan cleared' });
+        await bot.editMessageText(
+            '🔄 Execution plan cleared.\n\nRun /plan_feature to generate a new plan.',
+            { chat_id: chatId, message_id: msgId }
+        );
+        console.log(`🔄 ${new Date().toISOString()} | Execution plan cleared`);
     }
 });
 
@@ -252,17 +584,29 @@ bot.onText(/^\/status/, async (msg) => {
     const unsent = outboxData.messages.filter(m => !m.sent).length;
     const stopFlag = existsSync(resolve(CENTRAL_DIR, 'wa_stop_signal'));
     const state = getState();
+    const plan = state.executionPlan;
 
-    const status = [
+    const statusLines = [
         '📊 Bridge Status',
         `📂 Active Project: ${state.activeProject}`,
         `📥 Inbox: ${inboxData.messages.length} total, ${unread} unread`,
         `📤 Outbox: ${outboxData.messages.length} total, ${unsent} unsent`,
         `${stopFlag ? '🔴' : '🟢'} Stop signal: ${stopFlag ? 'ACTIVE' : 'clear'}`,
         `🤖 Bot: running`
-    ].join('\n');
+    ];
 
-    await bot.sendMessage(CHAT_ID, status);
+    if (plan && plan.tasks?.length) {
+        statusLines.push('');
+        statusLines.push(`📋 Execution Plan: ${plan.status} (${plan.tasks.length} tasks)`);
+        if (plan.defaultPlatform) {
+            statusLines.push(`   Platform: ${PLATFORM_LABELS[plan.defaultPlatform] || plan.defaultPlatform}`);
+        }
+        if (plan.defaultModel) {
+            statusLines.push(`   Model: ${plan.defaultModel}`);
+        }
+    }
+
+    await bot.sendMessage(CHAT_ID, statusLines.join('\n'));
 });
 
 bot.onText(/^\/project$/, async (msg) => {
@@ -336,7 +680,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint', '/plan', '/clear_lock'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
