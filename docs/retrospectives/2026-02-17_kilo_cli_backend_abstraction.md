@@ -29,25 +29,37 @@ Session started with debugging the live Gemini CLI watcher/bot system — bot wa
 
 ## Trial & Error Log
 
-### 1. Bot crash on Telegram Markdown parsing
+### 1. Gemini CLI deleted research files during watcher session
+
+- **Expected:** Gemini CLI would only modify files explicitly requested by the user.
+- **Reality:** During a watcher session, the CLI archived/deleted 6 research documents (`cli_comparative_analysis.md`, `kilo_cli_benchmark.md`, `kilo_cli_investigation.md`, `nanobot_comparison.md`, `picoclaw_comparison.md`, `replacing_gemini_cli_with_claude_code.md`). Files were moved or removed without user instruction.
+- **Resolution:** Had to restore all 6 files from git history (`423b3c0`). Added explicit prompt rule: `NEVER delete, rename, or move any files unless the user explicitly asked you to.`
+
+### 2. Gemini CLI used raw `fs` module instead of project helpers
+
+- **Expected:** CLI would use existing `readJsonSafe()`/`atomicWrite()` helpers for file I/O (established pattern).
+- **Reality:** CLI wrote new code using raw `readFileSync`/`writeFileSync` calls, bypassing error handling and atomicity safeguards. This caused bot crash on malformed JSON.
+- **Resolution:** Fixed in `4b38f82` — replaced raw `fs` calls with project helpers. Added regression tests to enforce helper usage.
+
+### 3. Bot crash on Telegram Markdown parsing
 
 - **Expected:** Sending `parse_mode: 'Markdown'` would render formatted messages.
 - **Reality:** Telegram API rejected messages containing unescaped special characters (e.g., `_`, `*`, `[` in filenames or code output). Bot crashed with unhandled rejection.
 - **Resolution:** Stripped ALL `parse_mode` from bot messages. Plain text with emoji is more reliable and sufficient for our use case. Added global `unhandledRejection` handler as safety net.
 
-### 2. Watcher progress not visible to user
+### 4. Watcher progress not visible to user
 
 - **Expected:** User would know when Gemini CLI was processing their message.
 - **Reality:** After sending a message, there was no feedback until the response arrived (could be 30-60s). User had no idea if it was received or stuck.
 - **Resolution:** Added 3-stage progress notifications written to outbox by watcher.sh: `📥 Message received` → `🧠 Running Gemini CLI...` → response. Bot polls outbox and forwards each update.
 
-### 3. Outdated research from Gemini CLI
+### 5. Outdated research from Gemini CLI
 
 - **Expected:** Gemini CLI research tasks would use web search for current data.
 - **Reality:** CLI relied on training data, producing outdated conclusions (e.g., "Kilo CLI has no headless mode").
 - **Resolution:** Added explicit prompt rules: `For ANY research task, ALWAYS use web search (Google Search tool)`. Also added `Follow instructions LITERALLY` to prevent spec requests from being implemented.
 
-### 4. Regression test `await import` in sync function
+### 6. Regression test `await import` in sync function
 
 - **Expected:** `atomicWrite()` helper function would work with dynamic import.
 - **Reality:** Used `const { renameSync } = await import('fs')` inside a non-async function — syntax error.
@@ -59,13 +71,15 @@ Session started with debugging the live Gemini CLI watcher/bot system — bot wa
 
 | # | Lesson | Detail |
 |---|--------|--------|
-| 1 | **Never use `parse_mode: 'Markdown'` with dynamic content** | Telegram's Markdown parser is strict — unescaped `_`, `*`, `[` crash the API. Use plain text with emoji for reliability. |
-| 2 | **Always add progress notifications for async operations** | Users need feedback within seconds. A 3-stage pattern (received → processing → done) prevents confusion and perceived hangs. |
-| 3 | **Always add `unhandledRejection` handler** | A single Telegram API error crashed the entire bot silently. Global error handlers prevent this. |
-| 4 | **Never trust AI research without web search** | Gemini CLI's training data said Kilo CLI had no headless mode — web search proved otherwise. Always enforce web search for research tasks. |
-| 5 | **Watcher architecture is naturally backend-agnostic** | Workflows are injected into the prompt as text blobs — the CLI agent never reads workflow files. Swapping backends requires only changing the binary invocation, not the workflow system. |
-| 6 | **Model format differs between CLIs** | Gemini uses bare names (`gemini-2.5-flash`), Kilo uses `provider/model` format (`google/gemini-2.5-flash`). Abstraction layer must handle mapping. |
-| 7 | **MCP fills tool gaps** | Kilo CLI lacks built-in web search but supports MCP. Tavily MCP (`@tavily/mcp`) provides web search with a free tier (1000/month). |
+| 1 | **Forbid autonomous file deletion in CLI prompts** | Gemini CLI deleted 6 research files without instruction. Prompt must include: `NEVER delete, rename, or move files unless explicitly asked.` |
+| 2 | **Enforce consistent helper usage in prompt** | CLI used raw `fs` calls instead of project helpers (`readJsonSafe`/`atomicWrite`), bypassing error handling. Prompt must specify: `Always use existing project helpers, never raw fs.` |
+| 3 | **Never use `parse_mode: 'Markdown'` with dynamic content** | Telegram's Markdown parser is strict — unescaped `_`, `*`, `[` crash the API. Use plain text with emoji for reliability. |
+| 4 | **Always add progress notifications for async operations** | Users need feedback within seconds. A 3-stage pattern (received → processing → done) prevents confusion and perceived hangs. |
+| 5 | **Always add `unhandledRejection` handler** | A single Telegram API error crashed the entire bot silently. Global error handlers prevent this. |
+| 6 | **Never trust AI research without web search** | Gemini CLI's training data said Kilo CLI had no headless mode — web search proved otherwise. Always enforce web search for research tasks. |
+| 7 | **Watcher architecture is naturally backend-agnostic** | Workflows are injected into the prompt as text blobs — the CLI agent never reads workflow files. Swapping backends requires only changing the binary invocation, not the workflow system. |
+| 8 | **Model format differs between CLIs** | Gemini uses bare names (`gemini-2.5-flash`), Kilo uses `provider/model` format (`google/gemini-2.5-flash`). Abstraction layer must handle mapping. |
+| 9 | **MCP fills tool gaps** | Kilo CLI lacks built-in web search but supports MCP. Tavily MCP (`@tavily/mcp`) provides web search with a free tier (1000/month). |
 
 ---
 
