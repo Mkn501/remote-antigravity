@@ -25,7 +25,7 @@ LOCK_FILE="$DOT_GEMINI/wa_session.lock"
 
 POLL_INTERVAL=3
 COOLDOWN=10
-DEFAULT_MODEL="gemini-3-pro-preview"  # CLI shorthand: gemini-3-pro
+DEFAULT_MODEL="gemini-2.5-flash"  # Fast + cheap, tasks get tier-appropriate models anyway
 
 echo "👁️  Inbox watcher started"
 echo "   HQ:      $CENTRAL_PROJECT_DIR"
@@ -261,6 +261,12 @@ Rules for the reply file:
                 fi
                 if [ -z "$TELEGRAM_RESPONSE" ]; then
                     TELEGRAM_RESPONSE=$(echo "$GEMINI_OUTPUT" | tail -c 500)
+                fi
+
+                # If still empty, report error
+                if [ -z "$TELEGRAM_RESPONSE" ] || [ ${#TELEGRAM_RESPONSE} -lt 5 ]; then
+                    TELEGRAM_RESPONSE="⚠️ Gemini CLI produced no output.\nModel: $ACTIVE_MODEL\nCheck rate limits or try /model to switch."
+                    echo "⚠️  Empty output from Gemini CLI ($ACTIVE_MODEL)" >&2
                 fi
 
                 # Append agent reply to session history
