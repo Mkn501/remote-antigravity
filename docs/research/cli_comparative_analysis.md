@@ -1,86 +1,98 @@
-# Comprehensive CLI Agent Comparison: Gemini CLI vs. Claude Code vs. Kilo CLI
+# Comprehensive CLI Agent Comparison: Gemini CLI vs. Kilo CLI
 
-**Date:** 2026-02-16
-**Status:** Draft / Research
+**Date:** 2026-02-16 (Updated 2026-02-17)
+**Status:** Complete
 **Context:** "Remote Antigravity" Project
 
 ## 1. Executive Summary
 
-This report compares three leading CLI-based AI agents to determine the optimal tooling strategy for the "Remote Antigravity" project.
-*   **Gemini CLI:** The current incumbent. A robust, Google-ecosystem-native generalist with a huge context window and high performance-to-cost ratio.
-*   **Claude Code:** Anthropic's specialized "coding agent" (Claude 3.7 Sonnet), offering deep reasoning for complex refactoring and a unique terminal-to-web workflow ("Teleporting").
-*   **Kilo CLI:** A flexible, model-agnostic local agent (formerly Kilocode) that prioritizes zero-config setup and broad model support (including local/free models).
+This report compares two CLI-based AI agents to determine the optimal tooling strategy for the "Remote Antigravity" project.
+*   **Gemini CLI:** The current primary backend. A robust, Google-ecosystem-native generalist with a huge context window, built-in Google Search, and high performance-to-cost ratio.
+*   **Kilo CLI:** A flexible, model-agnostic local agent (formerly Kilocode) that supports 500+ models, headless pipeline mode (`kilo run --auto`), and MCP integration.
 
-**Verdict:** **Gemini CLI remains the best "Operating System"** for the project's chat loop due to speed and cost, but **Claude Code should be integrated as a specialized "Skill"** for heavy coding tasks. Kilo CLI is a strong backup for offline/local-only scenarios but lacks the ecosystem integration required for our primary workflow.
+> [!NOTE]
+> **Claude Code** was evaluated and excluded due to prohibitive cost for a chat loop. See archived analysis below.
+
+**Verdict (Updated 2026-02-17):** **Gemini CLI remains the default backend** due to speed, built-in Google Search, and free tier. **Kilo CLI is now a first-class alternative backend** (not just a backup), switchable via `/backend` command. Both support headless mode for the watcher. See [backend-agnostic watcher spec](../specs/backend_agnostic_watcher_spec.md).
 
 ---
 
 ## 2. Feature Comparison Matrix
 
-| Feature | Gemini CLI | Claude Code | Kilo CLI |
-| :--- | :--- | :--- | :--- |
-| **Core Model** | **Gemini 2.0 Flash / Pro** | **Claude 3.7 Sonnet** | **Model Agnostic** (Gemini, Claude, GPT-4, Local LLMs via Ollama) |
-| **Primary Strength** | **Long Context & Speed**. Can ingest entire codebases (1M+ tokens) cheaply. | **Deep Reasoning & "Dev" UX**. Specialized for complex refactoring and test-driven dev. | **Flexibility & Privacy**. Runs anywhere, supports local models, zero-config. |
-| **Context Awareness** | `GEMINI.md`, `memory-bank/` (Convention), Project-wide scanning. | `CLAUDE.md`, Hierarchical context, Native session persistence. | Git Root detection, `.kilo/` config, auto-discovery. |
-| **Tooling / Skills** | **Native Tools** (Google Search, Shell, File). Custom "Skills" via TS/JS. | **MCP Support** (Model Context Protocol). Custom slash commands. | **MCP Support**. Native support for Model Context Protocol servers. |
-| **Connectivity** | **Google Cloud / Vertex AI**. Deep integration with Google services. | **Anthropic API**. Requires API key or Pro subscription. | **BYO Keys / Local**. Connects to anything (OpenAI, Anthropic, Ollama, etc.). |
-| **Cost** | **Low / Free Tier**. Generous free tier, very cheap input tokens. | **High**. Claude 3.7 Sonnet is premium priced. | **Variable**. Free with local models; user pays for API calls otherwise. |
-| **UX / Interface** | **Chat-Centric**. Focus on conversation & command execution. | **Task-Centric**. "Agentic" loop (Plan -> Act -> Verify). Web UI "Teleport". | **Hybrid**. TUI (Terminal UI) + CLI commands. |
+| Feature | Gemini CLI | Kilo CLI |
+| :--- | :--- | :--- |
+| **Core Model** | **Gemini 2.5 Flash / Pro** | **Model Agnostic** (500+ models: Gemini, Claude, GPT-4, local via Ollama) |
+| **Primary Strength** | **Long Context & Speed**. 1M+ token window, built-in Google Search. | **Flexibility & Privacy**. Runs anywhere, any model, zero lock-in. |
+| **Headless Mode** | `gemini --yolo -p "prompt"` | `kilo run --auto "prompt"` |
+| **Model Flag** | `--model gemini-2.5-flash` (bare name) | `--model google/gemini-2.5-flash` (provider/model format) |
+| **Context Awareness** | `GEMINI.md`, `memory-bank/` (Convention), Project-wide scanning. | Git Root detection, `.kilo/` config, auto-discovery. |
+| **Tooling / Skills** | **Native Tools** (Google Search, Shell, File). Custom "Skills" via TS/JS. | **MCP Support**. Extensible via Model Context Protocol servers. |
+| **Web Search** | ✅ Built-in Google Search | ⚠️ Requires [Tavily MCP](https://www.npmjs.com/package/@tavily/mcp) (free: 1000/month) |
+| **Agent Roles** | Single generalist with sub-agents | `--agent` flag (developer, architect, build, plan) |
+| **Cost** | **Low / Free Tier**. Generous free tier, very cheap input tokens. | **Variable**. Free with community/local models; user pays for API calls otherwise. |
+| **UX / Interface** | Chat-Centric (conversation & command execution). | Hybrid: TUI + CLI + headless pipeline. |
 
 ---
 
 ## 3. Deep Dive Analysis
 
-### A. Gemini CLI (The Incumbent)
+### A. Gemini CLI (Default Backend)
 **Role:** The "Brain" and "Orchestrator".
 *   **Pros:**
-    *   **Context Window:** The 1M-2M token window allows it to read the *entire* project history and documentation in every request without sophisticated RAG, making it unmatched for "awareness".
-    *   **Speed:** Gemini Flash 2.0 is exceptionally fast, critical for a chat-based interface where user latency matters.
-    *   **Ecosystem:** First-party access to Google Search and other Google tools is a unique advantage.
+    *   **Context Window:** The 1M-2M token window allows it to read the *entire* project history and documentation in every request without sophisticated RAG.
+    *   **Speed:** Gemini Flash 2.5 is exceptionally fast, critical for a chat-based interface where user latency matters.
+    *   **Ecosystem:** First-party access to Google Search and other Google tools is a unique advantage for research tasks.
 *   **Cons:**
-    *   **Coding Precision:** While good, it sometimes lags behind Claude 3.7 Sonnet in complex, multi-file refactoring logic where "thinking" time is high.
-    *   **Agent Loop:** Less autonomous "looping" capabilities out-of-the-box compared to Claude Code's specialized agent loop.
+    *   **Coding Precision:** While good, it sometimes lags behind Claude 3.7 Sonnet in complex, multi-file refactoring logic.
+    *   **Agent Loop:** Less autonomous "looping" capabilities out-of-the-box compared to dedicated coding agents.
+    *   **Lock-in:** Tied to Google Gemini models only.
 
-### B. Claude Code (The Specialist)
-**Role:** The "Senior Engineer" Sub-Agent.
+### B. Kilo CLI (Alternative Backend)
+**Role:** The "Swiss Army Knife" — model-flexible alternative.
 *   **Pros:**
-    *   **Coding Intelligence:** Claude 3.7 Sonnet is widely considered the SOTA for coding tasks. It excels at adhering to complex architectural patterns (like our `memory-bank`).
-    *   **Teleporting:** The ability to start a session in the CLI and seamlessly continue it in a web browser (and vice versa) is a game-changer for debugging complex issues.
-    *   **Verification:** Has a built-in "Act -> Verify" loop where it runs tests to confirm its own changes.
-*   **Cons:**
-    *   **Cost:** Running this for every trivial chat interaction (e.g., "What time is it?") would be prohibitively expensive.
-    *   **Latency:** Slower than Gemini Flash for simple queries.
-
-### C. Kilo CLI (The Universal Adapter)
-**Role:** The "Local/Offline" Backup.
-*   **Pros:**
-    *   **Zero Lock-in:** You are not tied to any single provider. If Google goes down, Kilo works with OpenAI or local Llama 3 models.
+    *   **Zero Lock-in:** Not tied to any single provider. If Google goes down, Kilo works with OpenAI, Anthropic, or local models.
     *   **Privacy:** Can run entirely offline with local models (e.g., via Ollama), ensuring no code leaves the machine.
-    *   **MCP First:** Built from the ground up around the Model Context Protocol, making it highly extensible with standard tools.
+    *   **MCP First:** Built from the ground up around the Model Context Protocol, making it highly extensible.
+    *   **Headless Mode:** `kilo run --auto` enables full pipeline/CI/CD integration, equivalent to Gemini's `--yolo -p`.
+    *   **Agent Roles:** `--agent developer` or `--agent architect` for task-specific behavior.
 *   **Cons:**
-    *   **Complexity:** "Jack of all trades, master of none". Requires more configuration to get the specific high-performance experience of Gemini or Claude.
-    *   **Context Limit:** Limited by the context window of the underlying model (often 8k-128k for local/standard models), far less than Gemini's 1M+.
+    *   **No Built-in Web Search:** Requires Tavily MCP or similar for research tasks.
+    *   **Model Format:** Uses `provider/model` format — abstraction layer needed for watcher.sh.
+    *   **Default Model Speed:** Free default model (`z-ai/glm-5`) is too slow for real-time chat (~18-43s per task).
+
+<details>
+<summary>C. Claude Code (Excluded — Cost Prohibitive)</summary>
+
+**Role:** Would serve as "Senior Engineer" sub-agent.
+*   **Pros:** Claude 3.7 Sonnet is widely considered SOTA for coding tasks. "Teleporting" CLI-to-web feature. Built-in verification loop.
+*   **Cons:** Running this for every chat interaction is prohibitively expensive. Slower than Gemini Flash for simple queries. Requires paid subscription.
+*   **Decision:** Excluded from active integration. Could be reconsidered for specific high-value tasks in the future.
+</details>
 
 ---
 
-## 4. Architecture Recommendation: The "Hybrid" Bridge
+## 4. Architecture: Backend-Agnostic Watcher
 
-We should **not** perform a full migration away from Gemini CLI. Instead, we should adopt a **Hybrid Architecture** where Gemini CLI acts as the Operating System, dispatching specialized tasks to Claude Code.
+Instead of a Gemini-only or hybrid delegation model, we implement a **switchable backend** architecture:
 
-### Proposed Workflow
-1.  **User (Telegram):** Sends message -> `watcher.sh` -> **Gemini CLI**.
-2.  **Gemini CLI:** Analyzes request.
-    *   *Case A (General):* "Update the README." -> **Gemini executes directly.**
-    *   *Case B (Complex):* "Refactor the entire `bot.js` module to use TS." -> **Gemini delegates.**
-3.  **Delegation:** Gemini calls a custom tool `run_claude_task`:
-    ```bash
-    claude -p "Refactor bot.js to TypeScript. adhere to memory-bank/techContext.md"
-    ```
-4.  **Result:** Claude Code executes the refactor (potentially interacting with the user if needed, or running autonomously) and returns the result.
-5.  **Gemini CLI:** Summarizes the work and reports back to Telegram.
+```
+User (Telegram) → watcher.sh → run_agent() → Gemini CLI (default)
+                                             → Kilo CLI (alternative)
+```
 
-### Action Plan
-1.  **Keep** Gemini CLI as the primary interface in `start.sh` and `watcher.sh`.
-2.  **Install** Claude Code (`npm install -g @anthropic-ai/claude-code`) on the host machine.
-3.  **Create** a Gemini Tool/Skill (`skills/claude-bridge.js`) to invoke `claude` commands safely.
-4.  **Update** `AGENTS.md` to reflect this hierarchy.
+### How It Works
+1.  **User (Telegram):** Sends message → `watcher.sh`.
+2.  **watcher.sh:** Reads `state.json` for `backend` field (default: `gemini`).
+3.  **`run_agent()`:** Routes to the configured backend:
+    *   `gemini`: `gemini --yolo -p "$PROMPT"` (with hooks workaround)
+    *   `kilo`: `kilo run --auto "$PROMPT"` (no hooks workaround needed)
+4.  **Backend switching:** Via `/backend` Telegram command (inline keyboard).
+
+### Why Not Delegation?
+The original plan (Gemini delegates to Claude Code) was abandoned because:
+- Claude Code is too expensive for every interaction.
+- Kilo CLI can use the *same* Gemini models, making delegation unnecessary.
+- A switchable backend is simpler and more maintainable than sub-agent orchestration.
+
+### Implementation
+See [backend_agnostic_watcher_spec.md](../specs/backend_agnostic_watcher_spec.md) for full spec with 9 sub-tasks.
