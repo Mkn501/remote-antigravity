@@ -31,6 +31,59 @@ Make `watcher.sh` support both Gemini CLI and Kilo CLI as interchangeable backen
 
 ---
 
+## Kilo CLI Prerequisites
+
+### 1. Web Search: Tavily MCP Server
+
+Kilo CLI lacks built-in web search. The [Tavily MCP server](https://www.npmjs.com/package/@tavily/mcp) fills this gap.
+
+```bash
+npm install -g @tavily/mcp
+```
+
+- **Free tier**: 1000 searches/month ([tavily.com](https://tavily.com))
+- **Config**: Add to `.kilocode/mcp.json` in the project root:
+
+```json
+{
+  "mcpServers": {
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "@tavily/mcp"],
+      "env": {
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### 2. Secret Management
+
+Kilo CLI supports 3 methods for API keys. We use the **.env approach** to match our existing pattern:
+
+| Method | Location | Notes |
+|---|---|---|
+| `kilo auth` | Interactive CLI | One-time setup, stores in `~/.config/kilo/config.json` |
+| `~/.config/kilo/config.json` | Global config | Persistent per-machine |
+| **Environment variables** | **`.env` (gitignored)** | **Our approach — matches existing `BOT_TOKEN`/`CHAT_ID`** |
+
+Add to `.env` (already in `.gitignore`):
+
+```bash
+# Existing
+BOT_TOKEN=...
+CHAT_ID=...
+
+# Kilo CLI backend
+KILO_API_KEY=...         # or provider-specific: ANTHROPIC_API_KEY, OPENAI_API_KEY
+TAVILY_API_KEY=...       # for Tavily MCP web search
+```
+
+The `watcher.sh` already sources `.env` via `dotenv`, so these will be available to `kilo run` automatically.
+
+---
+
 ## How Workflows Transfer Between Backends
 
 ### Why it "just works"
