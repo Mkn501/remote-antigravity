@@ -206,15 +206,28 @@ You operate primarily in **DEEP WORK MODE**.
     - **Prohibition**: NEVER use surface-level logic. If it feels easy, dig deeper.
 - **Update Logic**: If you change the design, you **MUST** update `systemPatterns.md` first.
 
-## 3. Task Decomposition & Delegation
+## 3. Task Decomposition & Delegation (Builder-Ready Work Orders)
 - **Workflow**:
     1.  **Check for Spec**: Look in `docs/specs/`.
-    2.  **Task Creation**: Use `mcp-tasks add "Task Name" "To Do"`.
-    3.  **Refinement**: Include details/subtasks via `description` parameter (indented lists or blockquotes).
-        > [!TIP]
-        > If using non-standard list markers (like `i)`, `ii)`), the tool will automatically wrap them in blockquotes to preserve them safely.
+    2.  **Work Order Creation**: Use `mcp-tasks add` or `antigravity_tasks.md` directly.
+    3.  **Work Order Format** (required per task):
+        - **File(s):** exact paths with line ranges
+        - **Signature:** `functionName(input: Type) → output: Type`
+        - **Scope Boundary:** files to modify and files NOT to touch
+        - **Acceptance:** specific test command
+        - **Tier:** 🧠 Top | ⚡ Mid | 🆓 Free
+    4.  **Dependency Graph**: Explicit task dependencies (which can run in parallel).
+    5.  **Execution Plan Summary**: Table of tasks with tiers, parallelism, and deps.
+    > [!IMPORTANT]
+    > **The Planner's job is to eliminate reasoning for the execution model.**
+    > Work orders must be self-contained. No searching, no guessing.
 
-## 4. The Jules Protocol (Delegation)
+## 4. Approval Gate (Hard Gate)
+- **No tasks execute until the user approves the Execution Plan.**
+- On Telegram: Default + Override button flow (choose platform → model → confirm).
+- In IDE: User reviews and invokes `/implement_task` per task sequentially.
+
+## 5. The Jules Protocol (Delegation)
 - **Prerequisites**: Ensure `AGENTS.md` exists in the repo root with current project context.
 - **The Jules Filter (Atomicity Check)**: A task is eligible for `agent: jules` ONLY if:
     1.  **Rule of 3**: Touches **3 files or fewer**.
@@ -224,7 +237,7 @@ You operate primarily in **DEEP WORK MODE**.
     - **agent: human**: For complex, creative, or architectural work.
     - **agent: jules**: For routine work that PASSES the filter. You **MUST** create a handoff document from `docs/specs/_JULES_HANDOFF_TEMPLATE.md` and paste it into the GitHub Issue body.
 
-## 5. Handoff
+## 6. Handoff
 - Commit the plan: `git commit -m "plan: [feature name]"`.
 - Hand back to **SOP Coordinator**.
 
@@ -242,8 +255,15 @@ You operate ONLY in **DEEP WORK MODE**.
 - **Command**: Run `mcp-tasks search --status "To Do" "In Progress"`.
 - **Review**: Pick the highest priority item.
 - **Claim**: Update status to `In Progress` via `mcp-tasks update [id] "In Progress"`.
+- **Work Order Validation**: The task **MUST** have a valid work order with File(s), Signature, Scope Boundary, and Acceptance. If missing → **STOP and request re-plan**.
 
-## 2. Standards & Philosophy Compliance (CRITICAL)
+## 2. Execution Guards (CRITICAL)
+- **Scope Guard**: ONLY modify files listed in the work order. If you need to change an unlisted file → **STOP and report**.
+- **Signature Guard**: Implement the exact function signature specified. No renaming or reordering.
+- **Boundary Guard**: Respect the `Scope Boundary`. If it says "Do NOT touch [file]", do not touch it.
+- **Unclear Task Guard**: If the work order is ambiguous → **STOP and request re-plan** rather than guessing.
+
+## 3. Standards & Philosophy Compliance
 - **Design Philosophy ("Intentional Minimalism")**:
     - **Anti-Generic**: Reject standard "bootstrapped" layouts.
     - **Uniqueness**: Strive for bespoke layouts and distinctive typography.
@@ -252,17 +272,18 @@ You operate ONLY in **DEEP WORK MODE**.
     - **Library Discipline**: If a UI library (Shadcn, Radix, MUI) is detected, **YOU MUST USE IT**. Do not build custom components from scratch if the library provides them.
     - **Stack**: Modern (React/Vue/Svelte), Tailwind/Custom CSS, semantic HTML5.
 
-## 3. The TDD Cycle (Strict)
+## 4. The TDD Cycle (Strict)
 - **Step A**: Create/Update a test case (Red).
 - **Step B**: Write minimum code to pass (Green).
 - **Step C**: Refactor and Verify.
+- **Step D**: Run the **acceptance test** from the work order's `Acceptance` field.
 - *Note*: You are your own Unit Tester. Do not hand off broken code.
 
-## 4. Documentation
+## 5. Documentation
 - **Log Decisions**: Log significant technical trade-offs in `memory-bank/decision-log.md`.
 - **Update Status**: Mark task as `Done` via `mcp-tasks update [id] "Done"`.
 
-## 5. Handoff
+## 6. Handoff
 - Commit changes: `feat: [Task ID] implementation details`.
 - Inform **SOP Coordinator** or switch to **SOP Auditor**.
 
@@ -323,6 +344,7 @@ These rules are enforced by the workflows themselves. They are listed here for q
 - **Retrospective Check**: Before implementing, scan `retro_index.md` Tags for the task's domain to avoid re-learning past mistakes.
 - **Design First**: If you change architecture, update `systemPatterns.md` *before* writing code.
 - **TDD Cycle**: Red → Green → Refactor. You are your own unit tester.
+- **Builder-Ready Output Standard**: Plans produce self-contained work orders with file paths, signatures, scope boundaries, and acceptance criteria. Mid-tier models execute mechanically — no searching, no guessing. See [builder_ready_planning_spec.md](docs/specs/builder_ready_planning_spec.md).
 
 ---
 
@@ -357,4 +379,4 @@ These rules are enforced by the workflows themselves. They are listed here for q
 **Convergence**: Auditor merges Jules's PRs and validates local code.
 
 ---
-> **Document Version**: 2.0 | **Last Updated**: 2026-02-16 | **Change**: Added Local PRs, Check-then-Merge protocol, decoupled validation/merge workflows.
+> **Document Version**: 3.0 | **Last Updated**: 2026-02-17 | **Change**: Builder-Ready Output Standard — work orders, execution guards, approval gate, tier recommendations.
