@@ -243,7 +243,12 @@ Rules for the reply file:
 
                 write_to_outbox "🧠 Running Gemini CLI ($ACTIVE_MODEL)..."
                 GEMINI_STDERR=$(mktemp)
-                GEMINI_OUTPUT=$(gemini "${GEMINI_ARGS[@]}" 2> >(tee -a "$DOT_GEMINI/wa_session.log" > "$GEMINI_STDERR")) || true
+                GEMINI_STDOUT=$(mktemp)
+                gemini "${GEMINI_ARGS[@]}" >"$GEMINI_STDOUT" 2>"$GEMINI_STDERR" || true
+                GEMINI_OUTPUT=$(cat "$GEMINI_STDOUT" 2>/dev/null || echo "")
+                rm -f "$GEMINI_STDOUT"
+                # Append stderr to session log
+                cat "$GEMINI_STDERR" >> "$DOT_GEMINI/wa_session.log" 2>/dev/null || true
 
                 # Detect rate limit / quota errors
                 STDERR_CONTENT=$(cat "$GEMINI_STDERR" 2>/dev/null || echo "")
@@ -269,7 +274,11 @@ Rules for the reply file:
                     done
 
                     GEMINI_STDERR2=$(mktemp)
-                    GEMINI_OUTPUT=$(gemini "${FALLBACK_ARGS[@]}" 2> >(tee -a "$DOT_GEMINI/wa_session.log" > "$GEMINI_STDERR2")) || true
+                    GEMINI_STDOUT2=$(mktemp)
+                    gemini "${FALLBACK_ARGS[@]}" >"$GEMINI_STDOUT2" 2>"$GEMINI_STDERR2" || true
+                    GEMINI_OUTPUT=$(cat "$GEMINI_STDOUT2" 2>/dev/null || echo "")
+                    rm -f "$GEMINI_STDOUT2"
+                    cat "$GEMINI_STDERR2" >> "$DOT_GEMINI/wa_session.log" 2>/dev/null || true
                     STDERR2=$(cat "$GEMINI_STDERR2" 2>/dev/null || echo "")
                     rm -f "$GEMINI_STDERR2"
                     if echo "$STDERR2" | grep -qiE '429|rate.limit|quota|resource.exhausted'; then
