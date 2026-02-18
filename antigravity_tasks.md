@@ -17,6 +17,28 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 
 ## To Do
 
+- [ ] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
+  - **Summary:** Adds a command to display the current bot version and process uptime.
+  - **File(s):** scripts/bot/bot.js
+  - **Action:** Add `bot.onText(/\/version/, ...)` handler.
+  - **Signature:** `(msg) => Promise<void>`
+  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
+  - **Dependencies:** None
+  - **Parallel:** Yes
+  - **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
+  - **Tier:** ⚡ Mid
+
+- [ ] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
+  - **Summary:** Ensures the /version command returns the expected format and doesn't crash.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Action:** Add a test case that mocks the message and asserts the response.
+  - **Signature:** `await test('/version command returns version and uptime', ...)`
+  - **Scope Boundary:** ONLY modify bot.test.js.
+  - **Dependencies:** None
+  - **Parallel:** Yes
+  - **Acceptance:** `npm test` passes.
+  - **Tier:** ⚡ Mid
+
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 
 ## Backlog
