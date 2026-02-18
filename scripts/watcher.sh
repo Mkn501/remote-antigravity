@@ -540,10 +540,18 @@ print(f'Loaded {len(tasks)} tasks into execution plan')
     CONTINUE_FILE="$DOT_GEMINI/wa_dispatch_continue.json"
 
     if [ -f "$DISPATCH_FILE" ] && [ ! -f "$LOCK_FILE" ] && command -v jq &>/dev/null; then
-        # Block dispatch when plan mode is active (requires explicit /review_plan approval first)
+        # Block dispatch when plan mode is active — UNLESS dispatch was explicitly approved via /review_plan
         if [ -f "$PLAN_MODE_FILE" ]; then
-            : # Skip dispatch — plan mode active, waiting for approval
-        else
+            DISPATCH_STATUS_CHECK=$(jq -r '.status // empty' "$DISPATCH_FILE" 2>/dev/null || echo "")
+            if [ "$DISPATCH_STATUS_CHECK" = "approved" ]; then
+                # Approval received — clear plan mode so execution can proceed
+                rm -f "$PLAN_MODE_FILE"
+                echo "🔓 Plan mode cleared — dispatch approved, starting execution" >&2
+            else
+                : # Skip dispatch — plan mode active, waiting for approval
+            fi
+        fi
+        if [ ! -f "$PLAN_MODE_FILE" ]; then
         DISPATCH_STATUS=$(jq -r '.status // empty' "$DISPATCH_FILE" 2>/dev/null || echo "")
 
         if [ "$DISPATCH_STATUS" = "approved" ]; then
