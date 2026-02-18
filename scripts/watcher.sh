@@ -30,6 +30,10 @@ if [ -f "$ENV_FILE" ]; then
                 ;;
         esac
     done < "$ENV_FILE"
+    # Map KILO_API_KEY to OPENROUTER_API_KEY for Kilo CLI
+    if [ -n "${KILO_API_KEY:-}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
+        export OPENROUTER_API_KEY="$KILO_API_KEY"
+    fi
 fi
 
 CENTRAL_PROJECT_DIR="${GEMINI_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -429,7 +433,7 @@ Rules for the reply file:
                 if [ -z "$TELEGRAM_RESPONSE" ] || [ ${#TELEGRAM_RESPONSE} -lt 5 ]; then
                     BACKEND_LABEL=$(get_backend)
                     TELEGRAM_RESPONSE="⚠️ $BACKEND_LABEL CLI produced no output.\nModel: $ACTIVE_MODEL\nCheck rate limits or try /model to switch."
-                    echo "⚠️  Empty output from Gemini CLI ($ACTIVE_MODEL)" >&2
+                    echo "⚠️  Empty output from agent CLI ($ACTIVE_MODEL)" >&2
                 fi
 
                 # Append agent reply to session history
