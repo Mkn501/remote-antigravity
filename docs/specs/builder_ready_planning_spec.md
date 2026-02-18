@@ -1,7 +1,7 @@
 # Builder-Ready Planning Workflow
 
 **Date:** 2026-02-17
-**Status:** Draft — For Review
+**Status:** Phase 1 Implemented | Phase 2 Planned
 **Context:** Tiered Model Routing / Multi-Builder Parallelism
 **Depends On:** [tiered_model_routing_spec.md](tiered_model_routing_spec.md), [backend_agnostic_watcher_spec.md](backend_agnostic_watcher_spec.md)
 
@@ -277,14 +277,14 @@ The existing Jules handoff template (`_JULES_HANDOFF_TEMPLATE.md`) already enfor
 
 ## Implementation Phasing
 
-### Phase 1 (Now): Gemini CLI (Sequential) + Jules (Parallel)
+### Phase 1 ✅ (Implemented 2026-02-18): Gemini CLI (Sequential) + Jules (Parallel)
 
 The current watcher dispatches tasks **sequentially** through Gemini CLI. Jules can be dispatched **in parallel** via GitHub MCP. Phase 1 implements:
-- Work order format in specs and workflows
-- Tier recommendations from architect
-- Telegram approval flow (Default + Override)
-- **Gemini CLI dispatch:** one task at a time via `gemini --model <selected>`
-- **Jules dispatch:** Gemini CLI uses GitHub MCP to create an Issue with the work order → Jules picks it up automatically
+- [x] Work order format in specs and workflows
+- [x] Tier recommendations from architect
+- [x] Telegram approval flow (Default + Override)
+- [x] **Gemini CLI dispatch:** one task at a time via `gemini --model <selected>`
+- [x] **Jules dispatch:** Gemini CLI uses GitHub MCP to create an Issue with the work order → Jules picks it up automatically
 
 **Jules prerequisites** (project must satisfy all):
 - [x] Project hosted on GitHub
@@ -370,14 +370,14 @@ The bot populates `platform` and `model` per task as the user makes selections. 
 
 ## Migration Path
 
-| Phase | Scope | Effort |
-|---|---|---|
-| 1. Update spec template | `_TEMPLATE.md` in this project | 30 min |
-| 2. Update `plan_feature.md` | `.agent/workflows/` in this project | 1 hour |
-| 3. Update `implement_task.md` | `.agent/workflows/` in this project | 30 min |
-| 4. Propagate to project template | `antigravity project template/` | 30 min |
-| 5. Update SOP knowledge item | Knowledge base | 30 min |
-| 6. Test with real feature | Use tiered routing on next feature | 1 session |
+| Phase | Scope | Effort | Status |
+|---|---|---|---|
+| 1. Update spec template | `_TEMPLATE.md` v2.0 — §9-12 added | 30 min | ✅ Done |
+| 2. Update `plan_feature.md` | Global workflow — Phase 3.5 + 4 added | 1 hour | ✅ Done |
+| 3. Update `implement_task.md` | Global workflow — 4 execution guards added | 30 min | ✅ Done |
+| 4. Propagate to project template | `antigravity project template/` synced | 30 min | ✅ Done |
+| 5. Update SOP | `workstation_sop.md` v3.1 — Builder-Ready principle | 30 min | ✅ Done |
+| 6. Test with real feature | `/version` command dispatched via watcher | 1 session | ✅ Done |
 
 ---
 

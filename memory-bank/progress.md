@@ -20,6 +20,7 @@
 - [x] **M12: Workflow Hardening** — Decoupled validation/merge, version footers, template v2.0.0 sync
 - [x] **M13: Regression Tests & CLI Research** — 45-test regression suite, Kilo CLI spike, backend-agnostic watcher spec
 - [x] **M14: E2E Fixes & Plan Mode** — Dispatch loop verified, auto-clear plan mode, Next Task button fix, 99-test regression suite
+- [x] **M15: Builder-Ready Planning (Phase 1)** — Work order format, execution guards, approval gate, spec template v2.0, real-feature validation
 
 ## Known Risks
 - `--yolo` mode auto-approves all Gemini tool calls — accepted for single-user personal use.

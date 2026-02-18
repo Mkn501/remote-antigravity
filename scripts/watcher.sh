@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Inbox Watcher — Daemon that triggers Gemini CLI on new messages
+# Inbox Watcher — Daemon that triggers Agent CLI on new messages
 # ============================================================================
 # Features:
+#   - Backend abstraction: routes to Gemini CLI or Kilo CLI via state.json
 #   - Persistent branch: uses telegram/active for conversation continuity
 #   - /new command: archives old branch, starts fresh from main
 #   - Conversation history: includes last 5 exchanges in prompt
@@ -15,6 +16,21 @@
 # ============================================================================
 
 set -euo pipefail
+
+# Source .env for API keys (needed for Kilo CLI backend)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/bot/.env"
+if [ -f "$ENV_FILE" ]; then
+    # Export only API key variables (skip comments and non-key lines)
+    while IFS='=' read -r key value; do
+        case "$key" in
+            \#*|"") continue ;;  # skip comments and empty lines
+            *_API_KEY|*_PROJECT_DIR|*_BOT_TOKEN|*_CHAT_ID)
+                export "$key=$value"
+                ;;
+        esac
+    done < "$ENV_FILE"
+fi
 
 CENTRAL_PROJECT_DIR="${GEMINI_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 DOT_GEMINI="$CENTRAL_PROJECT_DIR/.gemini"
@@ -94,6 +110,73 @@ write_to_outbox_with_markup() {
     fi
 }
 
+# --- Helper: Get active backend from state.json ---
+get_backend() {
+    jq -r '.backend // "gemini"' "$STATE_FILE" 2>/dev/null || echo "gemini"
+}
+
+# --- Helper: Run agent CLI with backend abstraction ---
+# Usage: run_agent "prompt" "model" "project_dir" [extra_flags...]
+# Sets AGENT_OUTPUT and AGENT_STDERR_CONTENT in caller scope
+run_agent() {
+    local prompt="$1"
+    local model="$2"
+    local project_dir="$3"
+    shift 3
+    local extra_flags=("$@")
+    local backend
+    backend=$(get_backend)
+
+    local AGENT_STDERR_FILE
+    AGENT_STDERR_FILE=$(mktemp)
+    local AGENT_STDOUT_FILE
+    AGENT_STDOUT_FILE=$(mktemp)
+
+    case "$backend" in
+        kilo)
+            write_to_outbox "🧠 Running Kilo CLI ($model)..."
+            local KILO_ARGS=(run --auto)
+            if [ -n "$model" ]; then
+                KILO_ARGS+=("--model" "$model")
+            fi
+            KILO_ARGS+=("${extra_flags[@]}")
+            KILO_ARGS+=("$prompt")
+            (
+                cd "$project_dir" || exit 1
+                kilo "${KILO_ARGS[@]}" >"$AGENT_STDOUT_FILE" 2>"$AGENT_STDERR_FILE"
+            ) || true
+            ;;
+        gemini|*)
+            write_to_outbox "🧠 Running Gemini CLI ($model)..."
+            local GEMINI_ARGS=("--model" "$model")
+            GEMINI_ARGS+=("${extra_flags[@]}")
+            GEMINI_ARGS+=("--yolo" "-p" "$prompt")
+            # Temporarily disable hooks (Gemini CLI bug workaround)
+            local TARGET_SETTINGS="$project_dir/.gemini/settings.json"
+            local SETTINGS_BACKED_UP=false
+            if [ -f "$TARGET_SETTINGS" ]; then
+                mv "$TARGET_SETTINGS" "${TARGET_SETTINGS}.watcher-bak"
+                SETTINGS_BACKED_UP=true
+            fi
+            (
+                cd "$project_dir" || exit 1
+                gemini "${GEMINI_ARGS[@]}" >"$AGENT_STDOUT_FILE" 2>"$AGENT_STDERR_FILE"
+            ) || true
+            # Restore hooks immediately
+            if [ "$SETTINGS_BACKED_UP" = true ] && [ -f "${TARGET_SETTINGS}.watcher-bak" ]; then
+                mv "${TARGET_SETTINGS}.watcher-bak" "$TARGET_SETTINGS"
+            fi
+            ;;
+    esac
+
+    # Export results to caller scope
+    AGENT_OUTPUT=$(cat "$AGENT_STDOUT_FILE" 2>/dev/null || echo "")
+    AGENT_STDERR_CONTENT=$(cat "$AGENT_STDERR_FILE" 2>/dev/null || echo "")
+    # Append stderr to session log
+    cat "$AGENT_STDERR_FILE" >> "$DOT_GEMINI/wa_session.log" 2>/dev/null || true
+    rm -f "$AGENT_STDOUT_FILE" "$AGENT_STDERR_FILE"
+}
+
 while true; do
     if [ -f "$INBOX" ] && command -v jq &>/dev/null; then
         UNREAD_COUNT=$(jq '[.messages[]? | select(.read == false)] | length' "$INBOX" 2>/dev/null || echo "0")
@@ -147,7 +230,6 @@ while true; do
             ROUTINE_MODEL="gemini-2.5-flash"
             PLANNING_MODEL="gemini-2.5-flash"  # Use Flash for testing speed (change to gemini-3-pro-preview for production)
             FALLBACK_MODEL="gemini-2.5-pro"  # Pro 3 → Pro 2.5 fallback
-            GEMINI_ARGS=()
             case "$USER_MESSAGES" in
                 /startup*|/shutdown*)
                     ACTIVE_MODEL="$ROUTINE_MODEL"
@@ -166,7 +248,6 @@ while true; do
                     fi
                     ;;
             esac
-            GEMINI_ARGS+=("--model" "$ACTIVE_MODEL")
 
             # Mark messages as read
             jq '.messages[] |= (if .read == false then .read = true else . end)' "$INBOX" > "${INBOX}.tmp" && mv "${INBOX}.tmp" "$INBOX"
@@ -252,11 +333,11 @@ $ARGS_SECTION
 Conversation history for this session is in: .gemini/session_history.txt
 Read it first for context on what has been discussed so far.
 ---
-You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
+You have FULL tool access: use your available file, shell, and search tools directly.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
 - NEVER delete, rename, or move any files unless the user explicitly asked you to.
-- For ANY research task, ALWAYS use web search (Google Search tool) to get current data. Never rely solely on training data.
+- For ANY research task, ALWAYS use web search to get current data. Never rely solely on training data.
 - Follow instructions LITERALLY. If the workflow says 'plan' or 'spec', produce ONLY the document — do NOT implement.
 Execute the workflow above step by step.
 When done, write a short Telegram-friendly reply to the file: .gemini/telegram_reply.txt
@@ -292,11 +373,11 @@ $USER_MESSAGES
 Conversation history for this session is in: .gemini/session_history.txt
 Read it first for context on what has been discussed so far.
 ---${PLAN_GUARD}
-You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
+You have FULL tool access: use your available file, shell, and search tools directly.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
 - NEVER delete, rename, or move any files unless the user explicitly asked you to.
-- For ANY research task, ALWAYS use web search (Google Search tool) to get current data. Never rely solely on training data.
+- For ANY research task, ALWAYS use web search to get current data. Never rely solely on training data.
 - Follow the user's request EXACTLY as stated. If they ask for a spec, plan, or analysis, produce ONLY that document — do NOT implement or write code.
 - Only write code if the user explicitly asks you to implement, build, or code something.
 When done, write a short Telegram-friendly reply to the file: .gemini/telegram_reply.txt
@@ -308,68 +389,29 @@ Rules for the reply file:
 - This file gets sent directly to the user's phone"
                 fi
 
-                # Finalize GEMINI_ARGS now that TELEGRAM_PROMPT is built
-                GEMINI_ARGS+=("--yolo" "-p" "$TELEGRAM_PROMPT")
-
-                # Temporarily disable hooks (Gemini CLI bug workaround)
-                TARGET_SETTINGS="$ACTIVE_PROJECT/.gemini/settings.json"
-                SETTINGS_BACKED_UP=false
-                if [ -f "$TARGET_SETTINGS" ]; then
-                    mv "$TARGET_SETTINGS" "${TARGET_SETTINGS}.watcher-bak"
-                    SETTINGS_BACKED_UP=true
-                fi
-
-                write_to_outbox "🧠 Running Gemini CLI ($ACTIVE_MODEL)..."
-                GEMINI_STDERR=$(mktemp)
-                GEMINI_STDOUT=$(mktemp)
-                gemini "${GEMINI_ARGS[@]}" >"$GEMINI_STDOUT" 2>"$GEMINI_STDERR" || true
-                GEMINI_OUTPUT=$(cat "$GEMINI_STDOUT" 2>/dev/null || echo "")
-                rm -f "$GEMINI_STDOUT"
-                # Append stderr to session log
-                cat "$GEMINI_STDERR" >> "$DOT_GEMINI/wa_session.log" 2>/dev/null || true
+                # Run agent via backend abstraction
+                run_agent "$TELEGRAM_PROMPT" "$ACTIVE_MODEL" "$ACTIVE_PROJECT"
 
                 # Detect rate limit / quota errors
-                STDERR_CONTENT=$(cat "$GEMINI_STDERR" 2>/dev/null || echo "")
-                rm -f "$GEMINI_STDERR"
                 RATE_LIMITED=false
-                if echo "$STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
+                if echo "$AGENT_STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
                     RATE_LIMITED=true
                     write_to_outbox "⚠️ Rate limit hit on $ACTIVE_MODEL."
                     echo "⚠️  Rate limit detected for $ACTIVE_MODEL" >&2
                 fi
 
                 # Fallback retry: if rate limited + no output, retry with fallback model
-                if [ "$RATE_LIMITED" = true ] && [ -z "$GEMINI_OUTPUT" ] && [ "$ACTIVE_MODEL" != "$FALLBACK_MODEL" ] && [ "$ACTIVE_MODEL" != "$ROUTINE_MODEL" ]; then
+                if [ "$RATE_LIMITED" = true ] && [ -z "$AGENT_OUTPUT" ] && [ "$ACTIVE_MODEL" != "$FALLBACK_MODEL" ] && [ "$ACTIVE_MODEL" != "$ROUTINE_MODEL" ]; then
                     write_to_outbox "🔄 Retrying with $FALLBACK_MODEL..."
                     echo "🔄 Falling back to $FALLBACK_MODEL" >&2
                     ACTIVE_MODEL="$FALLBACK_MODEL"
-                    FALLBACK_ARGS=("--model" "$FALLBACK_MODEL")
-                    # Copy all args except --model
-                    for arg in "${GEMINI_ARGS[@]}"; do
-                        if [ "$SKIP_NEXT" = true ]; then SKIP_NEXT=false; continue; fi
-                        if [ "$arg" = "--model" ]; then SKIP_NEXT=true; continue; fi
-                        FALLBACK_ARGS+=("$arg")
-                    done
-
-                    GEMINI_STDERR2=$(mktemp)
-                    GEMINI_STDOUT2=$(mktemp)
-                    gemini "${FALLBACK_ARGS[@]}" >"$GEMINI_STDOUT2" 2>"$GEMINI_STDERR2" || true
-                    GEMINI_OUTPUT=$(cat "$GEMINI_STDOUT2" 2>/dev/null || echo "")
-                    rm -f "$GEMINI_STDOUT2"
-                    cat "$GEMINI_STDERR2" >> "$DOT_GEMINI/wa_session.log" 2>/dev/null || true
-                    STDERR2=$(cat "$GEMINI_STDERR2" 2>/dev/null || echo "")
-                    rm -f "$GEMINI_STDERR2"
-                    if echo "$STDERR2" | grep -qiE '429|rate.limit|quota|resource.exhausted'; then
+                    run_agent "$TELEGRAM_PROMPT" "$FALLBACK_MODEL" "$ACTIVE_PROJECT"
+                    if echo "$AGENT_STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted'; then
                         write_to_outbox "❌ $FALLBACK_MODEL also rate limited. Try again later."
                         echo "❌ Fallback also rate limited" >&2
                     else
                         write_to_outbox "✅ $FALLBACK_MODEL succeeded."
                     fi
-                fi
-
-                # Restore hooks immediately
-                if [ "$SETTINGS_BACKED_UP" = true ] && [ -f "${TARGET_SETTINGS}.watcher-bak" ]; then
-                    mv "${TARGET_SETTINGS}.watcher-bak" "$TARGET_SETTINGS"
                 fi
 
                 # Read Telegram reply from file (written by Gemini)
@@ -380,12 +422,13 @@ Rules for the reply file:
                     rm -f "$REPLY_FILE"
                 fi
                 if [ -z "$TELEGRAM_RESPONSE" ]; then
-                    TELEGRAM_RESPONSE=$(echo "$GEMINI_OUTPUT" | tail -c 500)
+                    TELEGRAM_RESPONSE=$(echo "$AGENT_OUTPUT" | tail -c 500)
                 fi
 
                 # If still empty, report error
                 if [ -z "$TELEGRAM_RESPONSE" ] || [ ${#TELEGRAM_RESPONSE} -lt 5 ]; then
-                    TELEGRAM_RESPONSE="⚠️ Gemini CLI produced no output.\nModel: $ACTIVE_MODEL\nCheck rate limits or try /model to switch."
+                    BACKEND_LABEL=$(get_backend)
+                    TELEGRAM_RESPONSE="⚠️ $BACKEND_LABEL CLI produced no output.\nModel: $ACTIVE_MODEL\nCheck rate limits or try /model to switch."
                     echo "⚠️  Empty output from Gemini CLI ($ACTIVE_MODEL)" >&2
                 fi
 
@@ -643,68 +686,32 @@ Instructions:
 - Write a brief completion report to: .gemini/telegram_reply.txt
   Format: what was done, files changed, test results
 ---
-You have FULL tool access: use write_file to create/edit files, run_shell_command for shell commands, read_file to read files.
+You have FULL tool access: use your available file, shell, and search tools directly.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL: Follow the task description EXACTLY. Implement only this specific task."
 
-                    # Build gemini args
-                    GEMINI_ARGS=("--model" "$TASK_MODEL" "--sandbox" "--yolo" "-p" "$TASK_PROMPT")
-
-                    # Temporarily disable hooks
-                    TARGET_SETTINGS="$ACTIVE_PROJECT/.gemini/settings.json"
-                    SETTINGS_BACKED_UP=false
-                    if [ -f "$TARGET_SETTINGS" ]; then
-                        mv "$TARGET_SETTINGS" "${TARGET_SETTINGS}.watcher-bak"
-                        SETTINGS_BACKED_UP=true
+                    # Run agent via backend abstraction (--sandbox only for Gemini)
+                    local EXTRA_FLAGS=()
+                    if [ "$(get_backend)" != "kilo" ]; then
+                        EXTRA_FLAGS+=("--sandbox")
                     fi
+                    run_agent "$TASK_PROMPT" "$TASK_MODEL" "$ACTIVE_PROJECT" "${EXTRA_FLAGS[@]}"
 
-                    # Run Gemini CLI
-                    (
-                        cd "$ACTIVE_PROJECT" || exit 1
-                        GEMINI_STDERR=$(mktemp)
-                        GEMINI_OUTPUT=$(gemini "${GEMINI_ARGS[@]}" 2> >(tee -a "$DOT_GEMINI/wa_session.log" > "$GEMINI_STDERR")) || true
-
-                        # Check for errors
-                        STDERR_CONTENT=$(cat "$GEMINI_STDERR" 2>/dev/null || echo "")
-                        rm -f "$GEMINI_STDERR"
-                        TASK_ERROR=""
-                        if echo "$STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
-                            TASK_ERROR="Rate limit hit on $TASK_MODEL"
-                        fi
-
-                        # Read reply file
-                        REPLY_FILE="$ACTIVE_PROJECT/.gemini/telegram_reply.txt"
-                        TASK_REPORT=""
-                        if [ -f "$REPLY_FILE" ]; then
-                            TASK_REPORT=$(cat "$REPLY_FILE")
-                            rm -f "$REPLY_FILE"
-                        fi
-                        if [ -z "$TASK_REPORT" ]; then
-                            TASK_REPORT=$(echo "$GEMINI_OUTPUT" | tail -c 500)
-                        fi
-
-                        # Pass report to parent
-                        echo "$TASK_REPORT" > "$DOT_GEMINI/.wa_dispatch_report"
-                        if [ -n "$TASK_ERROR" ]; then
-                            echo "$TASK_ERROR" > "$DOT_GEMINI/.wa_dispatch_error"
-                        fi
-                    ) || true
-
-                    # Restore hooks
-                    if [ "$SETTINGS_BACKED_UP" = true ] && [ -f "${TARGET_SETTINGS}.watcher-bak" ]; then
-                        mv "${TARGET_SETTINGS}.watcher-bak" "$TARGET_SETTINGS"
-                    fi
-
-                    # Process result
-                    TASK_REPORT=""
+                    # Check for errors
                     TASK_ERROR=""
-                    if [ -f "$DOT_GEMINI/.wa_dispatch_report" ]; then
-                        TASK_REPORT=$(cat "$DOT_GEMINI/.wa_dispatch_report")
-                        rm -f "$DOT_GEMINI/.wa_dispatch_report"
+                    if echo "$AGENT_STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
+                        TASK_ERROR="Rate limit hit on $TASK_MODEL"
                     fi
-                    if [ -f "$DOT_GEMINI/.wa_dispatch_error" ]; then
-                        TASK_ERROR=$(cat "$DOT_GEMINI/.wa_dispatch_error")
-                        rm -f "$DOT_GEMINI/.wa_dispatch_error"
+
+                    # Read reply file
+                    REPLY_FILE="$ACTIVE_PROJECT/.gemini/telegram_reply.txt"
+                    TASK_REPORT=""
+                    if [ -f "$REPLY_FILE" ]; then
+                        TASK_REPORT=$(cat "$REPLY_FILE")
+                        rm -f "$REPLY_FILE"
+                    fi
+                    if [ -z "$TASK_REPORT" ]; then
+                        TASK_REPORT=$(echo "$AGENT_OUTPUT" | tail -c 500)
                     fi
 
                     # Mark task as done in dispatch

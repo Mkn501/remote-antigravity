@@ -1,60 +1,49 @@
 # Tasks - Antigravity Tasks
 
-<!-- TEMPLATE_VERSION: 2.0.0 -->
-<!--
-### Task Schema
-Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1-10] [Jules: Yes]`
-
-- **Category**: [Bug], [Feature], [Infra], [Research], [Docs], [Security], [Release], [UX], [Architecture]
-- **Topic**: Optional sub-area (e.g., [Hooks], [Bot], [WhatsApp])
-- **Difficulty**: 1 (Trivial) to 10 (Expert/Arch Change)
-- **Jules**: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
--->
-
 ## In Progress
 
 - [ ] [Security] [Bot] Add CHAT_ID check to callback_query handler [Difficulty: 1]
 
 ## To Do
 
+- [ ] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4]
+- [ ] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4]
+- [ ] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2]
+- [ ] **Category**: [Bug], [Feature], [Infra], [Research], [Docs], [Security], [Release], [UX], [Architecture]
+- [ ] **Topic**: Optional sub-area (e.g., [Hooks], [Bot], [WhatsApp])
+- [ ] **Difficulty**: 1 (Trivial) to 10 (Expert/Arch Change)
+- [ ] **Jules**: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
+- [ ] ->
 - [ ] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
-  - **Summary:** Adds a command to display the current bot version and process uptime.
-  - **File(s):** scripts/bot/bot.js
-  - **Action:** Add `bot.onText(/\/version/, ...)` handler.
-  - **Signature:** `(msg) => Promise<void>`
-  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
-  - **Dependencies:** None
-  - **Parallel:** Yes
-  - **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
-  - **Tier:** ⚡ Mid
-
+- [ ] **Summary:** Adds a command to display the current bot version and process uptime.
+- [ ] **File(s):** scripts/bot/bot.js
+- [ ] **Action:** Add `bot.onText(/\/version/, ...)` handler.
+- [ ] **Signature:** `(msg) => Promise<void>`
+- [ ] **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
+- [ ] **Dependencies:** None
+- [ ] **Parallel:** Yes
+- [ ] **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
+- [ ] **Tier:** ⚡ Mid
 - [ ] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
-  - **Summary:** Ensures the /version command returns the expected format and doesn't crash.
-  - **File(s):** scripts/bot/bot.test.js
-  - **Action:** Add a test case that mocks the message and asserts the response.
-  - **Signature:** `await test('/version command returns version and uptime', ...)`
-  - **Scope Boundary:** ONLY modify bot.test.js.
-  - **Dependencies:** None
-  - **Parallel:** Yes
-  - **Acceptance:** `npm test` passes.
-  - **Tier:** ⚡ Mid
-
+- [ ] **Summary:** Ensures the /version command returns the expected format and doesn't crash.
+- [ ] **File(s):** scripts/bot/bot.test.js
+- [ ] **Action:** Add a test case that mocks the message and asserts the response.
+- [ ] **Signature:** `await test('/version command returns version and uptime', ...)`
+- [ ] **Scope Boundary:** ONLY modify bot.test.js.
+- [ ] **Dependencies:** None
+- [ ] **Parallel:** Yes
+- [ ] **Acceptance:** `npm test` passes.
+- [ ] **Tier:** ⚡ Mid
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 - [ ] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
 
 ## Backlog
 
-- [ ] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4]
-  - [ ] Add `get_backend()` + `run_agent()` abstraction to watcher.sh [Difficulty: 5]
-  - [ ] Replace inline Gemini invocation with `run_agent()` [Difficulty: 4]
-  - [ ] Generalize prompt tool references (generic tool names) [Difficulty: 2]
-  - [ ] Add `/backend` command to bot.js with inline keyboard [Difficulty: 4]
-  - [ ] Add callback handler for backend selection [Difficulty: 3]
-  - [ ] Update `/help`, `/status`, BOT_COMMANDS [Difficulty: 2]
-  - [ ] Update systemPatterns.md (architecture diagram + P-005) [Difficulty: 2]
-  - [ ] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2]
-  - [ ] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4]
+- [ ] Replace inline Gemini invocation with `run_agent()` [Difficulty: 4]
+- [ ] Generalize prompt tool references (generic tool names) [Difficulty: 2]
+- [ ] Update `/help`, `/status`, BOT_COMMANDS [Difficulty: 2]
+- [ ] Update systemPatterns.md (architecture diagram + P-005) [Difficulty: 2]
 
 ## Done
 
@@ -85,8 +74,15 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 - [x] [Bug] [Bot] Fix ep_next→ep_continue callback mismatch [Difficulty: 1] - COMPLETED 2026-02-18
 - [x] [Feature] [Testing] Add callback mismatch regression test [Difficulty: 2] - COMPLETED 2026-02-18
 - [x] [Feature] [Testing] Expand regression suite to 99 tests [Difficulty: 3] - COMPLETED 2026-02-18
-
-## Notes
+- [x] [Feature] [Planning] Update spec template (_TEMPLATE.md v2.0) with §9-12: Work Orders, Dependency Graph, Execution Plan, Parallelism [Ref: builder_ready_planning_spec.md] [Difficulty: 3]
+- [x] [Feature] [Planning] Update plan_feature.md workflow with Phase 3.5 (Dependency Graph) + Phase 4 (Execution Plan & Approval Gate) [Ref: builder_ready_planning_spec.md] [Difficulty: 5]
+- [x] [Feature] [Planning] Update implement_task.md workflow with 4 execution guards (Scope, Signature, Boundary, Unclear Task) [Ref: builder_ready_planning_spec.md] [Difficulty: 3]
+- [x] [Feature] [Planning] Propagate spec template + workflow changes to antigravity project template [Ref: builder_ready_planning_spec.md] [Difficulty: 2]
+- [x] [Feature] [Planning] Add Builder-Ready Output Standard to SOP (workstation_sop.md v3.1) [Ref: builder_ready_planning_spec.md] [Difficulty: 3]
+- [x] [Feature] [Planning] Validate builder-ready workflow with real feature dispatch (/version command) [Ref: builder_ready_planning_spec.md] [Difficulty: 2]
+- [x] Add `get_backend()` + `run_agent()` abstraction to watcher.sh [Difficulty: 5]
+- [x] Add `/backend` command to bot.js with inline keyboard [Difficulty: 4]
+- [x] Add callback handler for backend selection [Difficulty: 3]
 
 ## Deleted
 

@@ -536,6 +536,7 @@ await test('watcher lifecycle status messages are valid', () => {
         '📥 Message received: test message',
         '⚡ Running workflow: /startup',
         '🧠 Running Gemini CLI...',
+        '🧠 Running Kilo CLI...',
         '💾 Changes committed',
         '🏁 Session closed — branch ready for review'
     ];
@@ -634,7 +635,7 @@ console.log('\n── Prompt Rules (watcher.sh) ──');
 await test('prompt contains web search instruction', () => {
     const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
     ok(watcher.includes('web search'), 'prompt should enforce web search for research');
-    ok(watcher.includes('Google Search'), 'prompt should mention Google Search tool');
+    ok(watcher.includes('web search'), 'prompt should mention web search (backend-agnostic)');
 });
 
 await test('prompt contains literal instruction following', () => {
@@ -671,6 +672,7 @@ await test('watcher.sh has progress notification calls', () => {
     const expectedNotifications = [
         'Message received',
         'Running Gemini CLI',
+        'Running Kilo CLI',
         'Changes committed',
         'Session closed'
     ];
@@ -729,6 +731,11 @@ const PLATFORM_MODELS = {
         { id: 'gemini-2.5-pro', label: '🧠 Pro 2.5' },
         { id: 'gemini-3-pro-preview', label: '🧠 Pro 3.0' },
         { id: 'gemini-2.0-flash-lite', label: '🆓 Flash Lite' }
+    ],
+    'kilo': [
+        { id: 'openrouter/z-ai/glm-5', label: '🧠 GLM-5' },
+        { id: 'openrouter/minimax/minimax-m2.5', label: '⚡ MiniMax M2.5' },
+        { id: 'openrouter/z-ai/glm-4.7-flash', label: '🆓 GLM-4.7 Flash' }
     ],
     'jules': []
 };
@@ -1727,7 +1734,128 @@ await test('edge: tasks with unmet deps are skipped in dispatch', () => {
     ok(task3DepsMetFinal, 'task 3 deps met after tasks 1+2 done');
 });
 
-// --- 14. Session Fixes Regression (2026-02-18) ---
+// --- 14. Kilo CLI Backend Regression (2026-02-18) ---
+console.log('\n── Regression: Kilo CLI Backend ──');
+
+await test('regression: watcher has get_backend() function', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('get_backend()'), 'watcher should define get_backend function');
+    ok(watcher.includes('backend // "gemini"'), 'get_backend should default to gemini');
+});
+
+await test('regression: watcher has run_agent() function', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('run_agent()'), 'watcher should define run_agent function');
+    ok(watcher.includes('AGENT_OUTPUT'), 'run_agent should set AGENT_OUTPUT');
+    ok(watcher.includes('AGENT_STDERR_CONTENT'), 'run_agent should set AGENT_STDERR_CONTENT');
+});
+
+await test('regression: run_agent routes to kilo CLI for kilo backend', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('kilo)'), 'run_agent should have kilo case');
+    ok(watcher.includes('kilo "${KILO_ARGS[@]}"'), 'run_agent should invoke kilo binary');
+    ok(watcher.includes('Running Kilo CLI'), 'run_agent should show Kilo CLI progress message');
+});
+
+await test('regression: run_agent routes to gemini CLI for gemini backend', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('gemini|*)'), 'run_agent should have gemini default case');
+    ok(watcher.includes('gemini "${GEMINI_ARGS[@]}"'), 'run_agent should invoke gemini binary');
+    ok(watcher.includes('Running Gemini CLI'), 'run_agent should show Gemini CLI progress message');
+});
+
+await test('regression: kilo CLI uses --auto flag for autonomous mode', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('KILO_ARGS=(run --auto)'), 'kilo should use run --auto for autonomous mode');
+});
+
+await test('regression: watcher sources .env for API keys', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('bot/.env'), 'watcher should source .env file');
+    ok(watcher.includes('_API_KEY'), 'watcher should export API key variables');
+    ok(watcher.includes('export "$key=$value"'), '.env sourcing should export matched variables');
+});
+
+await test('regression: bot.js PLATFORM_MODELS includes kilo models', () => {
+    const bot = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(bot.includes("'kilo':"), 'PLATFORM_MODELS should have kilo entry');
+    ok(bot.includes('openrouter/z-ai/glm-5'), 'kilo should have GLM-5 model');
+    ok(bot.includes('openrouter/minimax/minimax-m2.5'), 'kilo should have MiniMax M2.5 model');
+    ok(bot.includes('openrouter/z-ai/glm-4.7-flash'), 'kilo should have GLM-4.7 Flash model');
+});
+
+await test('regression: bot.js has /backend command handler', () => {
+    const bot = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(bot.includes('/backend'), 'bot should have /backend command');
+    ok(bot.includes("backend:"), 'bot should have backend: callback data prefix');
+    ok(bot.includes('BACKEND_OPTIONS'), 'bot should define BACKEND_OPTIONS');
+});
+
+await test('regression: backend switch resets model to backend default', () => {
+    // Simulate backend switch callback logic
+    const backendId = 'kilo';
+    const models = PLATFORM_MODELS[backendId] || [];
+    const defaultModel = models.length > 0 ? models[0].id : null;
+
+    strictEqual(defaultModel, 'openrouter/z-ai/glm-5', 'kilo default model should be GLM-5');
+
+    // Simulate state update
+    updateState(s => {
+        s.backend = backendId;
+        s.model = defaultModel;
+    });
+    const state = getState();
+    strictEqual(state.backend, 'kilo', 'state.backend should be kilo');
+    strictEqual(state.model, 'openrouter/z-ai/glm-5', 'state.model should be GLM-5');
+});
+
+await test('regression: gemini backend switch resets to gemini default', () => {
+    const backendId = 'gemini';
+    const models = PLATFORM_MODELS[backendId] || [];
+    const defaultModel = models.length > 0 ? models[0].id : null;
+
+    strictEqual(defaultModel, 'gemini-2.5-flash', 'gemini default model should be Flash 2.5');
+
+    updateState(s => {
+        s.backend = backendId;
+        s.model = defaultModel;
+    });
+    const state = getState();
+    strictEqual(state.backend, 'gemini', 'state.backend should be gemini');
+    strictEqual(state.model, 'gemini-2.5-flash', 'state.model should be Flash 2.5');
+});
+
+await test('regression: /model shows backend-specific models', () => {
+    // When backend=kilo, /model should show kilo models
+    updateState(s => { s.backend = 'kilo'; s.model = 'openrouter/z-ai/glm-5'; });
+    const state = getState();
+    const backend = state.backend || 'gemini';
+    const models = PLATFORM_MODELS[backend] || PLATFORM_MODELS['gemini'];
+
+    strictEqual(models.length, 3, 'kilo should have 3 models');
+    strictEqual(models[0].id, 'openrouter/z-ai/glm-5', 'first kilo model should be GLM-5');
+    ok(models.every(m => m.id.startsWith('openrouter/')), 'all kilo models should use openrouter prefix');
+});
+
+await test('regression: start.sh accepts kilo as alternative backend', () => {
+    const startSh = readFileSync(resolve(PROJECT_ROOT, 'start.sh'), 'utf8');
+    ok(startSh.includes('kilo'), 'start.sh should reference kilo');
+    ok(startSh.includes('No CLI backend found'), 'start.sh should only fail when neither gemini nor kilo is available');
+});
+
+await test('regression: gemini hooks workaround only applies to gemini backend', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    // The settings.json backup/restore for hooks should be inside the gemini case, not kilo
+    ok(watcher.includes('watcher-bak'), 'gemini case should backup settings.json');
+    // Kilo case should NOT reference settings backup
+    const kiloSection = watcher.substring(
+        watcher.indexOf('kilo)'),
+        watcher.indexOf('gemini|*)')
+    );
+    ok(!kiloSection.includes('watcher-bak'), 'kilo case should NOT backup settings.json');
+});
+
+// --- 15. Session Fixes Regression (2026-02-18) ---
 console.log('\n── Regression: Session Fixes ──');
 
 await test('regression: outbox race condition — concurrent writes merge', () => {
@@ -1831,14 +1959,14 @@ await test('regression: PLAN_MODE_FILE defined as global variable', () => {
     // PLAN_MODE_FILE should be defined near the top with other globals (before any function/loop)
     const lines = watcher.split('\n');
     let globalDefLine = -1;
-    for (let i = 0; i < Math.min(30, lines.length); i++) {
+    for (let i = 0; i < Math.min(50, lines.length); i++) {
         if (lines[i].includes('PLAN_MODE_FILE=')) {
             globalDefLine = i + 1;
             break;
         }
     }
-    ok(globalDefLine > 0 && globalDefLine <= 30,
-        `PLAN_MODE_FILE should be defined in first 30 lines (found at line ${globalDefLine})`);
+    ok(globalDefLine > 0 && globalDefLine <= 50,
+        `PLAN_MODE_FILE should be defined in first 50 lines (found at line ${globalDefLine})`);
 });
 
 // ============================================================================

@@ -59,9 +59,15 @@ case "${1:-start}" in
         fi
 
         if ! command -v gemini &> /dev/null; then
-            echo -e "${RED}❌ Gemini CLI not found${NC}"
-            echo "   Install: https://github.com/google-gemini/gemini-cli"
-            exit 1
+            if command -v kilo &> /dev/null; then
+                echo -e "${YELLOW}⚠️  Gemini CLI not found, but Kilo CLI is available${NC}"
+                echo "   Use /backend in Telegram to switch to Kilo."
+            else
+                echo -e "${RED}❌ No CLI backend found (need gemini or kilo)${NC}"
+                echo "   Gemini: https://github.com/google-gemini/gemini-cli"
+                echo "   Kilo:   npm install -g @kilocode/cli"
+                exit 1
+            fi
         fi
 
         # Kill existing instances

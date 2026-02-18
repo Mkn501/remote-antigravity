@@ -14,6 +14,7 @@
 - Reliability: False-positive rate limit errors (To Do)
 
 ## Recent Changes
+- Documented Builder-Ready Planning Phase 1 as implemented (2026-02-18).
 - Implemented plan mode auto-clear on dispatch approval (2026-02-18).
 - Fixed callback mismatch (`ep_next` → `ep_continue`) (2026-02-18).
 - Expanded regression suite to 99 tests (2026-02-18).

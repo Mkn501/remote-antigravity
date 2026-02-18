@@ -1,7 +1,7 @@
 // ============================================================================
 // Telegram Relay Bot — wa-bridge
 // ============================================================================
-// Relays messages between Telegram and the Gemini CLI hook bridge via JSON
+// Relays messages between Telegram and Agent CLI (Gemini or Kilo) via JSON
 // files (wa_inbox.json / wa_outbox.json).
 //
 // Commands:
@@ -173,6 +173,7 @@ bot.onText(/^\/help/, async (msg) => {
         '/list — List projects',
         '/help — This message',
         '/model — Switch AI model',
+        '/backend — Switch CLI backend (Gemini/Kilo)',
         '/clear_lock — Clear stuck session lock',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help);
@@ -194,13 +195,24 @@ const PLATFORM_MODELS = {
         { id: 'gemini-3-pro-preview', label: '🧠 Pro 3.0' },
         { id: 'gemini-2.0-flash-lite', label: '🆓 Flash Lite' }
     ],
+    'kilo': [
+        { id: 'openrouter/z-ai/glm-5', label: '🧠 GLM-5' },
+        { id: 'openrouter/minimax/minimax-m2.5', label: '⚡ MiniMax M2.5' },
+        { id: 'openrouter/z-ai/glm-4.7-flash', label: '🆓 GLM-4.7 Flash' }
+    ],
     'jules': [] // No model choice — GitHub-managed
 };
 
 const PLATFORM_LABELS = {
     'gemini': '💻 Gemini CLI',
+    'kilo': '🧪 Kilo CLI',
     'jules': '🤖 Jules'
 };
+
+const BACKEND_OPTIONS = [
+    { id: 'gemini', label: '💻 Gemini CLI', short: 'Gemini' },
+    { id: 'kilo', label: '🧪 Kilo CLI', short: 'Kilo' }
+];
 
 const TIER_EMOJI = { 'top': '🧠', 'mid': '⚡', 'free': '🆓' };
 
@@ -283,14 +295,35 @@ function writeDispatch(plan) {
 bot.onText(/^\/model$/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     const state = readJsonSafe(STATE_FILE, {});
+    const backend = state.backend || 'gemini';
     const current = state.model || 'gemini-3-pro-preview';
-    const currentLabel = MODEL_OPTIONS.find(m => m.id === current)?.short || current;
 
-    await bot.sendMessage(CHAT_ID, `🤖 Current model: ${currentLabel}${!state.model ? ' (default)' : ''}\nSelect a model:`, {
+    // Show models for the active backend
+    const models = PLATFORM_MODELS[backend] || PLATFORM_MODELS['gemini'];
+    const currentLabel = models.find(m => m.id === current)?.label || current;
+    const backendLabel = BACKEND_OPTIONS.find(b => b.id === backend)?.short || backend;
+
+    await bot.sendMessage(CHAT_ID, `🤖 Backend: ${backendLabel}\nCurrent model: ${currentLabel}${!state.model ? ' (default)' : ''}\nSelect a model:`, {
         reply_markup: {
-            inline_keyboard: [MODEL_OPTIONS.map(m => ({
+            inline_keyboard: [models.map(m => ({
                 text: m.id === current ? `✅ ${m.label}` : m.label,
                 callback_data: `model:${m.id}`
+            }))]
+        }
+    });
+});
+
+// --- Backend Selection ---
+bot.onText(/^\/backend$/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const state = readJsonSafe(STATE_FILE, {});
+    const current = state.backend || 'gemini';
+
+    await bot.sendMessage(CHAT_ID, `🔧 Active backend: ${BACKEND_OPTIONS.find(b => b.id === current)?.label || current}\nSelect backend:`, {
+        reply_markup: {
+            inline_keyboard: [BACKEND_OPTIONS.map(b => ({
+                text: b.id === current ? `✅ ${b.label}` : b.label,
+                callback_data: `backend:${b.id}`
             }))]
         }
     });
@@ -348,14 +381,35 @@ bot.on('callback_query', async (query) => {
 
     if (query.data?.startsWith('model:')) {
         const modelId = query.data.replace('model:', '');
-        const modelInfo = MODEL_OPTIONS.find(m => m.id === modelId);
+        const state = getState();
+        const backend = state.backend || 'gemini';
+        const models = PLATFORM_MODELS[backend] || PLATFORM_MODELS['gemini'];
+        const modelInfo = models.find(m => m.id === modelId);
         if (!modelInfo) return;
 
         updateState(s => s.model = modelId);
 
-        await bot.answerCallbackQuery(query.id, { text: `Switched to ${modelInfo.short}` });
-        await bot.editMessageText(`🤖 Model switched to: ${modelInfo.short}`, { chat_id: chatId, message_id: msgId });
+        await bot.answerCallbackQuery(query.id, { text: `Switched to ${modelInfo.label}` });
+        await bot.editMessageText(`🤖 Model switched to: ${modelInfo.label}`, { chat_id: chatId, message_id: msgId });
         console.log(`🤖 ${new Date().toISOString()} | Model → ${modelId}`);
+
+    } else if (query.data?.startsWith('backend:')) {
+        const backendId = query.data.replace('backend:', '');
+        const backendInfo = BACKEND_OPTIONS.find(b => b.id === backendId);
+        if (!backendInfo) return;
+
+        // Switch backend and reset model to first model of that backend
+        const models = PLATFORM_MODELS[backendId] || [];
+        const defaultModel = models.length > 0 ? models[0].id : null;
+        updateState(s => {
+            s.backend = backendId;
+            s.model = defaultModel;
+        });
+
+        const modelLabel = models.find(m => m.id === defaultModel)?.label || defaultModel || 'none';
+        await bot.answerCallbackQuery(query.id, { text: `Switched to ${backendInfo.short}` });
+        await bot.editMessageText(`🔧 Backend: ${backendInfo.label}\n🤖 Model: ${modelLabel}`, { chat_id: chatId, message_id: msgId });
+        console.log(`🔧 ${new Date().toISOString()} | Backend → ${backendId}, Model → ${defaultModel}`);
 
     } else if (query.data?.startsWith('project:')) {
         const name = query.data.replace('project:', '');
@@ -669,6 +723,8 @@ bot.onText(/^\/status/, async (msg) => {
     const statusLines = [
         '📊 Bridge Status',
         `📂 Active Project: ${state.activeProject}`,
+        `🔧 Backend: ${BACKEND_OPTIONS.find(b => b.id === (state.backend || 'gemini'))?.label || state.backend || 'Gemini CLI'}`,
+        `🤖 Model: ${state.model || '(default)'}`,
         `📥 Inbox: ${inboxData.messages.length} total, ${unread} unread`,
         `📤 Outbox: ${outboxData.messages.length} total, ${unsent} unsent`,
         `${stopFlag ? '🔴' : '🟢'} Stop signal: ${stopFlag ? 'ACTIVE' : 'clear'}`,
@@ -760,7 +816,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint', '/review_plan', '/clear_lock'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/sprint', '/review_plan', '/clear_lock'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
