@@ -20,6 +20,15 @@ const OUTBOX = resolve(TEST_DIR, 'wa_outbox.json');
 const STATE = resolve(TEST_DIR, 'state.json');
 const LOCK = resolve(TEST_DIR, 'wa_session.lock');
 
+const BOT_PACKAGE_JSON = resolve(SCRIPT_DIR, 'package.json');
+const { version } = JSON.parse(readFileSync(BOT_PACKAGE_JSON, 'utf8'));
+const startTime = new Date(); // Mock startup time for tests
+
+// Mock Telegram Bot and message storage
+let mockBot;
+let receivedMessages;
+let CHAT_ID; // Will be set during test setup
+
 // ---- Test Framework ----
 let passed = 0;
 let failed = 0;
@@ -29,10 +38,29 @@ const failures = [];
 function setup() {
     rmSync(TEST_DIR, { recursive: true, force: true });
     mkdirSync(TEST_DIR, { recursive: true });
+
+    // Mock specific CHAT_ID for tests
+    CHAT_ID = '123456789';
+    receivedMessages = [];
+
+    // Mock TelegramBot for each test
+    mockBot = {
+        onText: (regexp, callback) => {
+            mockBot._handlers.push({ regexp, callback });
+        },
+        sendMessage: async (chatId, text, options) => {
+            receivedMessages.push({ chatId, text, options });
+            return { message_id: receivedMessages.length };
+        },
+        _handlers: []
+    };
 }
 
 function teardown() {
     rmSync(TEST_DIR, { recursive: true, force: true });
+    mockBot = null;
+    receivedMessages = [];
+    CHAT_ID = null;
 }
 
 async function test(name, fn) {
@@ -1312,33 +1340,57 @@ await test('mock flow: complete plan → refine → review → execute lifecycle
     strictEqual(dispatch.tasks[0].taskStatus, 'pending', 'step 5: task 1 pending');
 });
 
-await test('mock flow: plan mode blocks dispatch even with approved dispatch file', () => {
+await test('mock flow: approved dispatch auto-clears plan mode marker', () => {
     mockSetup();
     writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
 
-    // Approved dispatch exists (from bot clicking Execute All)
+    // Approved dispatch exists (from bot clicking Execute All / /review_plan)
     writeFileSync(MOCK_DISPATCH, JSON.stringify({
         status: 'approved',
         tasks: [{ id: 1, description: 'Run me', taskStatus: 'pending' }]
     }, null, 2));
 
-    // Watcher dispatch loop
+    // Watcher dispatch loop — NEW BEHAVIOR:
+    // When dispatch is approved AND plan mode is active,
+    // auto-clear plan mode so execution can proceed
+    if (existsSync(MOCK_PLAN_MODE)) {
+        const dispatch = JSON.parse(readFileSync(MOCK_DISPATCH, 'utf8'));
+        if (dispatch.status === 'approved') {
+            // Clear plan mode — approval received
+            unlinkSync(MOCK_PLAN_MODE);
+        }
+    }
+
+    ok(!existsSync(MOCK_PLAN_MODE), 'plan mode should be auto-cleared when dispatch is approved');
+
+    // Now dispatch should proceed
     let taskRan = false;
     if (existsSync(MOCK_DISPATCH) && !existsSync(MOCK_PLAN_MODE)) {
-        // Would run task
         taskRan = true;
     }
-    // Plan mode blocks even approved dispatches
-    // This test verifies the guard was checked BEFORE dispatch status
-    ok(!taskRan, 'dispatch should not run while plan mode marker exists');
-
-    // Remove marker → dispatch should now proceed
-    unlinkSync(MOCK_PLAN_MODE);
-    if (existsSync(MOCK_DISPATCH) && !existsSync(MOCK_PLAN_MODE)) {
-        taskRan = true;
-    }
-    ok(taskRan, 'dispatch should run after marker removed');
+    ok(taskRan, 'dispatch should run after plan mode auto-cleared');
 });
+await test('mock flow: non-approved dispatch does NOT clear plan mode', () => {
+    mockSetup();
+    writeFileSync(MOCK_PLAN_MODE, 'plan_feature');
+
+    // Dispatch exists but status is pending_review (not yet approved)
+    writeFileSync(MOCK_DISPATCH, JSON.stringify({
+        status: 'pending_review',
+        tasks: [{ id: 1, description: 'Task', taskStatus: 'pending' }]
+    }, null, 2));
+
+    // Auto-clear logic should NOT trigger for non-approved status
+    if (existsSync(MOCK_PLAN_MODE)) {
+        const dispatch = JSON.parse(readFileSync(MOCK_DISPATCH, 'utf8'));
+        if (dispatch.status === 'approved') {
+            unlinkSync(MOCK_PLAN_MODE);
+        }
+    }
+
+    ok(existsSync(MOCK_PLAN_MODE), 'plan mode should remain active for non-approved dispatch');
+});
+
 // --- 13h. Edge Cases ---
 console.log('\n── Plan Flow Edge Cases ──');
 
@@ -1653,6 +1705,120 @@ await test('edge: tasks with unmet deps are skipped in dispatch', () => {
         return dep && dep.taskStatus === 'done';
     });
     ok(task3DepsMetFinal, 'task 3 deps met after tasks 1+2 done');
+});
+
+// --- 14. Session Fixes Regression (2026-02-18) ---
+console.log('\n── Regression: Session Fixes ──');
+
+await test('regression: outbox race condition — concurrent writes merge', () => {
+    // Simulates the race: watcher writes doc to outbox, bot reads, sends, rewrites
+    // FIX: bot re-reads outbox before writing sent flags
+    mockSetup();
+    const outbox = resolve(MOCK_GEMINI, 'wa_outbox.json');
+
+    // Step 1: bot reads outbox with text message
+    writeFileSync(outbox, JSON.stringify({
+        messages: [{ id: 'msg_1', type: 'text', text: 'hello', sent: false }]
+    }, null, 2));
+    const botSnapshot = JSON.parse(readFileSync(outbox, 'utf8'));
+
+    // Step 2: watcher appends a doc message (while bot is sending)
+    const current = JSON.parse(readFileSync(outbox, 'utf8'));
+    current.messages.push({ id: 'doc_1', type: 'document', filePath: '/tmp/spec.txt', sent: false });
+    writeFileSync(outbox, JSON.stringify(current, null, 2));
+
+    // Step 3: BAD — bot writes its snapshot back (overwrites watcher's doc)
+    // This is the OLD behavior:
+    botSnapshot.messages[0].sent = true;
+    // writeFileSync(outbox, JSON.stringify(botSnapshot, null, 2)); // Would lose doc_1!
+
+    // Step 3: GOOD — bot re-reads, merges, then writes
+    const fresh = JSON.parse(readFileSync(outbox, 'utf8'));
+    for (const msg of fresh.messages) {
+        const match = botSnapshot.messages.find(m => m.id === msg.id);
+        if (match && match.sent) msg.sent = true;
+    }
+    writeFileSync(outbox, JSON.stringify(fresh, null, 2));
+
+    // Verify: both messages present, watcher's doc NOT lost
+    const result = JSON.parse(readFileSync(outbox, 'utf8'));
+    strictEqual(result.messages.length, 2, 'should have both text and doc messages');
+    strictEqual(result.messages[0].sent, true, 'text msg should be marked sent');
+    strictEqual(result.messages[1].sent, false, 'doc msg should remain unsent');
+    strictEqual(result.messages[1].type, 'document', 'doc type preserved');
+});
+
+await test('regression: dispatch prompt contains spec ref injection point', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    // Verify the dispatch prompt reads specRef from state.json
+    ok(watcher.includes("executionPlan") && watcher.includes("specRef"),
+        'dispatch should read specRef from state.json executionPlan');
+    ok(watcher.includes('TASK_SPEC_REF'),
+        'dispatch should have TASK_SPEC_REF variable');
+    ok(watcher.includes('read this file FIRST'),
+        'dispatch prompt should tell model to read spec first');
+});
+
+await test('regression: dispatch prompt contains scope boundary injection', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('TASK_SCOPE'),
+        'dispatch should have TASK_SCOPE variable');
+    ok(watcher.includes('Scope Boundary'),
+        'scope extraction should look for Scope Boundary field');
+    ok(watcher.includes('Do NOT modify files outside the scope boundary'),
+        'dispatch prompt should enforce scope boundary');
+});
+
+await test('regression: dispatch prompt removed ambiguous workflow reference', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    // The old "Follow the /implement_task workflow if available" was removed
+    ok(!watcher.includes('Follow the /implement_task workflow if available'),
+        'ambiguous workflow reference should be removed from dispatch prompt');
+});
+
+await test('regression: difficulty regex accepts X and X/10 formats', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    // The regex should have the optional /\\d+ suffix
+    ok(watcher.includes('(?:/\\d+)?'),
+        'difficulty regex should accept optional /N suffix');
+
+    // Functional test: simulate both formats
+    const regexSource = /\[Difficulty: (\d+)(?:\/\d+)?\]/;
+    const match1 = '[Difficulty: 3]'.match(regexSource);
+    const match2 = '[Difficulty: 7/10]'.match(regexSource);
+    const match3 = '[Difficulty: 2/5]'.match(regexSource);
+
+    ok(match1, 'should match [Difficulty: 3]');
+    strictEqual(match1[1], '3', 'should capture 3');
+    ok(match2, 'should match [Difficulty: 7/10]');
+    strictEqual(match2[1], '7', 'should capture 7 from 7/10');
+    ok(match3, 'should match [Difficulty: 2/5]');
+    strictEqual(match3[1], '2', 'should capture 2 from 2/5');
+});
+
+await test('regression: refinement prompt injects active spec filename', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('ACTIVE_SPEC'),
+        'refinement prompt should have ACTIVE_SPEC variable');
+    ok(watcher.includes('The ACTIVE spec file is:') || watcher.includes('ACTIVE spec file is:'),
+        'refinement prompt should explicitly name the active spec');
+    ok(watcher.includes('ONLY spec you should edit'),
+        'refinement prompt should restrict editing to active spec only');
+});
+
+await test('regression: PLAN_MODE_FILE defined as global variable', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    // PLAN_MODE_FILE should be defined near the top with other globals (before any function/loop)
+    const lines = watcher.split('\n');
+    let globalDefLine = -1;
+    for (let i = 0; i < Math.min(30, lines.length); i++) {
+        if (lines[i].includes('PLAN_MODE_FILE=')) {
+            globalDefLine = i + 1;
+            break;
+        }
+    }
+    ok(globalDefLine > 0 && globalDefLine <= 30,
+        `PLAN_MODE_FILE should be defined in first 30 lines (found at line ${globalDefLine})`);
 });
 
 // ============================================================================
