@@ -40,6 +40,8 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
   - **Tier:** ⚡ Mid
 
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
+- [ ] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
+- [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
 
 ## Backlog
 
@@ -79,6 +81,10 @@ Format: `- [ ] [Category] [Topic] Description [Ref: path/to/spec] [Difficulty: 1
 - [x] [SOP] Synchronize workstation_sop.md with project template
 - [x] [Workflow] Refactor pr_check.md to validation-only
 - [x] [Workflow] Create merge_changes.md global workflow
+- [x] [Bug] [Watcher] Fix plan mode auto-clear on dispatch approval [Difficulty: 2] - COMPLETED 2026-02-18
+- [x] [Bug] [Bot] Fix ep_next→ep_continue callback mismatch [Difficulty: 1] - COMPLETED 2026-02-18
+- [x] [Feature] [Testing] Add callback mismatch regression test [Difficulty: 2] - COMPLETED 2026-02-18
+- [x] [Feature] [Testing] Expand regression suite to 99 tests [Difficulty: 3] - COMPLETED 2026-02-18
 
 ## Notes
 

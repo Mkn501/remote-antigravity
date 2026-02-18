@@ -1,29 +1,29 @@
 # Active Context
 
 ## Next Session Goal
-- [ ] Implement backend-agnostic watcher [Ref: docs/specs/backend_agnostic_watcher_spec.md]
+- [ ] Fix false-positive rate limit detection (check exit code 0) [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md]
 
 ## Current Focus
-- [x] **Session 2026-02-17**: Regression tests (45 tests), prompt fixes, Kilo CLI research + spike, backend-agnostic watcher spec.
-- **Status**: Spec complete with 9 sub-tasks in backlog. Kilo CLI v1.0.21 confirmed with headless mode. Tavily MCP identified for web search gap.
+- [x] **Session 2026-02-18**: E2E Fixes & Plan Mode.
+- **Status**: Plan mode auto-clear implemented, Next Task button fixed. Flash execution reliability identified as risk.
 
 ## Open Work Items
 - Security: CHAT_ID callback auth (In Progress)
 - Security: `$MODEL_FLAG` quoting (To Do)
-- Feature: Backend-agnostic watcher — Gemini + Kilo CLI (Backlog, spec'd)
-- Infra: Configure Tavily MCP + API key for Kilo web search (Backlog)
+- Reliability: Flash + Sandbox replace errors (To Do)
+- Reliability: False-positive rate limit errors (To Do)
 
 ## Recent Changes
-- Built regression test suite: 45 tests, 11 categories (bot.test.js) (2026-02-17).
-- Fixed watcher prompt: web search enforcement, literal instruction following (2026-02-17).
-- Created backend-agnostic watcher spec with spike results (2026-02-17).
-- Added Tavily MCP and secret management prerequisites to spec (2026-02-17).
+- Implemented plan mode auto-clear on dispatch approval (2026-02-18).
+- Fixed callback mismatch (`ep_next` → `ep_continue`) (2026-02-18).
+- Expanded regression suite to 99 tests (2026-02-18).
+- Deleted `telegram/active` branch (failed Flash run cleanup).
 
 <details><summary>Older Sessions</summary>
 
+- **2026-02-17**: Regression tests (45 tests), prompt fixes, Kilo CLI research.
 - **2026-02-16 (PM)**: Refactored PR Check/Merge workflows, added version footers, synced template.
-- **2026-02-16 (AM)**: Conversation history refactor, model/project selection UI, security review, README rewrite, startup script.
-- **2026-02-15**: Initial build — hooks, bot, sprint mode, multi-project support.
+- **2026-02-16 (AM)**: Conversation history refactor, model/project selection UI, security review.
 
 </details>
 
@@ -38,3 +38,6 @@
 | 5 | Version footers on docs enable programmatic drift detection between projects and template |
 | 6 | Never trust AI research without web search — Gemini CLI said Kilo had no headless mode; web search proved otherwise |
 | 7 | Watcher architecture is naturally backend-agnostic — workflows are injected as text, not read by the CLI agent |
+| 8 | **Bot callbacks must match watcher data exactly** — simple string mismatch causes silent UI failures |
+| 9 | **Flash + Sandbox struggles with large files** — `replace` tool often fails to find context in >1000 line files |
+| 10 | **Gemini CLI Auto-Retry is Silent** — stderr warnings about rate limits don't mean failure if exit code is 0 |
