@@ -26,18 +26,6 @@ This feature adds a `/version` command to the Telegram bot. This allows users to
     ⏱️ Uptime: 1h 23m 45s
     ```
 
-## Testing Strategy
-
-### Unit Tests (`scripts/bot/bot.test.js`)
--   [ ] Test that `/version` command triggers a response.
--   [ ] Verify response contains version number from `package.json`.
--   [ ] Verify response contains "Uptime".
-
-### Manual Verification
--   Send `/version` in Telegram.
--   Verify output matches expected format.
-
 ## Implementation Tasks
 
 1.  **Update Bot Logic**: Add `/version` handler in `bot.js`.
-2.  **Add Tests**: Add regression test in `bot.test.js`.
