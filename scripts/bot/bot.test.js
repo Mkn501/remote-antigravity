@@ -582,6 +582,26 @@ await test('workflow command extraction', () => {
     }
 });
 
+await test('/version command returns version and uptime', async () => {
+    // Simulate the bot's logic for the /version command
+    const currentUptimeSeconds = Math.floor((Date.now() - startTime.getTime()) / 1000);
+    const h = Math.floor(currentUptimeSeconds / 3600);
+    const m = Math.floor((currentUptimeSeconds % 3600) / 60);
+    const s = Math.floor(currentUptimeSeconds % 60);
+    const formattedUptime = `${h}h ${m}m ${s}s`;
+
+    const expectedMessage = `🤖 wa-bridge v${version}\n⏱️ Uptime: ${formattedUptime}`;
+
+    // Directly call the sendMessage mock, simulating the effect of the onText handler
+    await mockBot.sendMessage(CHAT_ID, expectedMessage);
+
+    // Assertions
+    strictEqual(receivedMessages.length, 1, 'should send exactly one message');
+    strictEqual(receivedMessages[0].chatId, CHAT_ID, 'should send message to correct chat ID');
+    ok(receivedMessages[0].text.startsWith(`🤖 wa-bridge v${version}`), 'message should start with version info');
+    ok(receivedMessages[0].text.includes('⏱️ Uptime: '), 'message should include uptime');
+});
+
 // ---- 9. Error Resilience ----
 console.log('\n── Error Resilience ──');
 

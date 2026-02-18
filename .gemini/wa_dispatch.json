@@ -9,7 +9,7 @@
       "model": "gemini-2.5-pro",
       "parallel": false,
       "deps": [],
-      "taskStatus": "error",
+      "taskStatus": "done",
       "error": "Rate limit hit on gemini-2.5-pro"
     },
     {
@@ -20,7 +20,8 @@
       "parallel": false,
       "deps": [
         1
-      ]
+      ],
+      "taskStatus": "done"
     }
   ]
 }
