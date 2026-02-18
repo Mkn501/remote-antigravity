@@ -22,6 +22,7 @@ INBOX="$DOT_GEMINI/wa_inbox.json"
 OUTBOX="$DOT_GEMINI/wa_outbox.json"
 STATE_FILE="$DOT_GEMINI/state.json"
 LOCK_FILE="$DOT_GEMINI/wa_session.lock"
+PLAN_MODE_FILE="$DOT_GEMINI/wa_plan_mode"
 
 POLL_INTERVAL=3
 COOLDOWN=10
