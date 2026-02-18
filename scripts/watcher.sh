@@ -695,7 +695,7 @@ Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL: Follow the task description EXACTLY. Implement only this specific task."
 
                     # Run agent via backend abstraction (--sandbox only for Gemini)
-                    local EXTRA_FLAGS=()
+                    EXTRA_FLAGS=()
                     if [ "$(get_backend)" != "kilo" ]; then
                         EXTRA_FLAGS+=("--sandbox")
                     fi
