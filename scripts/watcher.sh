@@ -139,7 +139,7 @@ run_agent() {
             if [ -n "$model" ]; then
                 KILO_ARGS+=("--model" "$model")
             fi
-            KILO_ARGS+=("${extra_flags[@]}")
+            KILO_ARGS+=(${extra_flags[@]+"${extra_flags[@]}"})
             KILO_ARGS+=("$prompt")
             (
                 cd "$project_dir" || exit 1
@@ -149,7 +149,7 @@ run_agent() {
         gemini|*)
             write_to_outbox "🧠 Running Gemini CLI ($model)..."
             local GEMINI_ARGS=("--model" "$model")
-            GEMINI_ARGS+=("${extra_flags[@]}")
+            GEMINI_ARGS+=(${extra_flags[@]+"${extra_flags[@]}"})
             GEMINI_ARGS+=("--yolo" "-p" "$prompt")
             # Temporarily disable hooks (Gemini CLI bug workaround)
             local TARGET_SETTINGS="$project_dir/.gemini/settings.json"
