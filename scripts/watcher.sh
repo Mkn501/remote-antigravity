@@ -766,7 +766,7 @@ $TASK_REPORT"
                             STATUS_LINE="❌ Task $TASK_ID error: $TASK_ERROR ($DONE_COUNT/$TASK_COUNT)"
                         fi
 
-                        STEP_MARKUP='{"inline_keyboard":[[{"text":"▶️ Next Task","callback_data":"ep_next"},{"text":"🛑 Stop","callback_data":"ep_stop"}]]}'
+                        STEP_MARKUP='{"inline_keyboard":[[{"text":"▶️ Next Task","callback_data":"ep_continue"},{"text":"🛑 Stop","callback_data":"ep_stop"}]]}'
                         write_to_outbox_with_markup "$STATUS_LINE
 
 📋 Report:
