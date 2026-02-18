@@ -476,13 +476,36 @@ await test('auth check accepts correct chat ID (number)', () => {
 });
 
 await test('workflow commands pass through to inbox', () => {
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/add', '/help', '/sprint', '/version'];
     const workflowCommands = ['/startup', '/shutdown', '/plan_feature', '/implement_task'];
     for (const cmd of workflowCommands) {
         const isBot = BOT_COMMANDS.some(c => cmd.startsWith(c));
         ok(!isBot, `${cmd} should NOT be intercepted by bot — it goes to the watcher`);
     }
 });
+
+import { bot } from './bot.js';
+
+await test('/version command returns version and uptime', async () => {
+    const msg = { chat: { id: CHAT_ID }, text: '/version' };
+
+    // Replace the real sendMessage with our mock
+    bot.sendMessage = mockBot.sendMessage;
+
+    // Find the handler for /version on the real bot
+    const handler = bot.listeners('text').find(h => h.toString().includes('/version'));
+    ok(handler, 'should find a handler for /version');
+
+    // Manually call the handler
+    await handler(msg, msg.text.match(handler.regexp));
+
+    strictEqual(receivedMessages.length, 1, 'should receive one message');
+    const reply = receivedMessages[0].text;
+    ok(reply.includes(`🤖 wa-bridge v${version}`), `should contain version string (v${version})`);
+    ok(reply.includes('⏱️ Uptime:'), 'should contain uptime string');
+});
+
+
 
 // ---- 7. File Sending ----
 console.log('\n── File Sending ──');
