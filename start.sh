@@ -38,6 +38,8 @@ stop_all() {
     echo "🛑 Stopping services..."
     pkill -f "bot.js" 2>/dev/null && echo "  ✅ Bot stopped" || echo "  ⚪ Bot was not running"
     pkill -f "watcher.sh" 2>/dev/null && echo "  ✅ Watcher stopped" || echo "  ⚪ Watcher was not running"
+    # Clean up stale lock to prevent false alerts on next start
+    rm -f "$LOG_DIR/wa_session.lock" 2>/dev/null
 }
 
 case "${1:-start}" in
