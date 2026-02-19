@@ -239,9 +239,16 @@ const TIER_EMOJI = { 'top': '🧠', 'mid': '⚡', 'free': '🆓' };
 
 // Planner suggestion: each tier maps to a default platform + model
 const TIER_DEFAULTS = {
-    'top': { platform: 'gemini', model: 'gemini-2.5-pro' },
-    'mid': { platform: 'gemini', model: 'gemini-2.5-flash' },
-    'free': { platform: 'gemini', model: 'gemini-2.0-flash-lite' }
+    gemini: {
+        'top': { platform: 'gemini', model: 'gemini-2.5-pro' },
+        'mid': { platform: 'gemini', model: 'gemini-2.5-flash' },
+        'free': { platform: 'gemini', model: 'gemini-2.0-flash-lite' }
+    },
+    kilo: {
+        'top': { platform: 'kilo', model: 'openrouter/minimax/minimax-m2.5' },
+        'mid': { platform: 'kilo', model: 'openrouter/minimax/minimax-m2.5' },
+        'free': { platform: 'kilo', model: 'openrouter/z-ai/glm-5' }
+    }
 };
 
 // Difficulty score → display label
@@ -283,16 +290,24 @@ function formatExecutionPlan(plan) {
 
 /** Apply tier-based defaults to tasks that have no platform/model assigned */
 function applyTierDefaults(plan) {
+    const state = getState();
+    const backend = state.backend || 'gemini';
+    const tierMap = TIER_DEFAULTS[backend] || TIER_DEFAULTS['gemini'];
     let applied = false;
     for (const t of plan.tasks) {
-        if (!t.platform && TIER_DEFAULTS[t.tier]) {
-            t.platform = TIER_DEFAULTS[t.tier].platform;
-            t.model = TIER_DEFAULTS[t.tier].model;
+        if (!t.platform && tierMap[t.tier]) {
+            t.platform = tierMap[t.tier].platform;
+            t.model = tierMap[t.tier].model;
+            applied = true;
+        } else if (!t.platform) {
+            // No tier match — use backend default model
+            t.platform = backend;
+            t.model = (PLATFORM_MODELS[backend] || [])[0]?.id || state.model;
             applied = true;
         }
     }
     if (applied && !plan.defaultPlatform) {
-        plan.defaultPlatform = 'gemini';
+        plan.defaultPlatform = backend;
     }
     return applied;
 }
@@ -607,7 +622,9 @@ bot.on('callback_query', async (query) => {
         const task = plan.tasks.find(t => t.id === taskId);
         if (!task) return;
 
-        const platformButtons = Object.keys(PLATFORM_MODELS).map(p => ({
+        // Only show the active backend — don't mix backends
+        const activeBackend = (getState().backend) || 'gemini';
+        const platformButtons = [activeBackend].map(p => ({
             text: PLATFORM_LABELS[p] || p,
             callback_data: `ep_task_plat:${taskId}:${p}`
         }));
