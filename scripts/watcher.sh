@@ -699,7 +699,7 @@ CRITICAL: Follow the task description EXACTLY. Implement only this specific task
                     if [ "$(get_backend)" != "kilo" ]; then
                         EXTRA_FLAGS+=("--sandbox")
                     fi
-                    run_agent "$TASK_PROMPT" "$TASK_MODEL" "$ACTIVE_PROJECT" "${EXTRA_FLAGS[@]}"
+                    run_agent "$TASK_PROMPT" "$TASK_MODEL" "$ACTIVE_PROJECT" ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}
 
                     # Check for errors
                     TASK_ERROR=""
