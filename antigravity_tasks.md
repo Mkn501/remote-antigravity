@@ -34,6 +34,39 @@
 - [ ] **Parallel:** Yes
 - [ ] **Acceptance:** `npm test` passes.
 - [ ] **Tier:** ⚡ Mid
+- [ ] [Feature] [Bot] Add dispatch mode field and Auto-Run button [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
+  - **Summary:** Adds `mode` field to dispatch JSON and "🚀 Auto-Run" button in plan review.
+  - **File(s):** scripts/bot/bot.js (lines ~525-540, ep_execute handler)
+  - **Action:** Add `mode` parameter to `writeDispatch()` call; add auto-run button.
+  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
+  - **Acceptance:** `npm test` passes; dispatch JSON has `mode` field.
+- [ ] [Feature] [Watcher] Implement auto-continue dispatch mode [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 3]
+  - **Summary:** Skip step-through pause when dispatch mode is `auto`.
+  - **File(s):** scripts/watcher.sh (lines ~787-810, continue-wait section)
+  - **Action:** Read `.mode` from dispatch JSON; if `auto`, skip `wa_dispatch_continue.json` wait.
+  - **Scope Boundary:** ONLY modify watcher.sh. Do NOT touch bot.js.
+  - **Dependencies:** Requires dispatch mode field (Task above).
+  - **Acceptance:** `bash -n watcher.sh` passes.
+- [ ] [Feature] [Testing] Add auto-continue regression tests [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
+  - **Summary:** Behavioral tests for dispatch mode field and auto-continue logic.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Action:** Add tests verifying mode field and watcher auto-continue behavior.
+  - **Scope Boundary:** ONLY modify bot.test.js.
+  - **Dependencies:** Requires auto-continue implementation.
+  - **Acceptance:** `npm test` passes with new tests.
+- [ ] [Feature] [Watcher] Implement parallel dispatch with git worktrees [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 7]
+  - **Summary:** Run independent Kilo tasks in parallel worktrees, merge results.
+  - **File(s):** scripts/watcher.sh (new `dispatch_parallel()` function)
+  - **Action:** Add parallel dispatch function with worktree create/run/merge/cleanup.
+  - **Scope Boundary:** ONLY modify watcher.sh. Do NOT touch bot.js.
+  - **Dependencies:** Requires auto-continue mode.
+  - **Acceptance:** `bash -n watcher.sh` passes; E2E test passes.
+- [ ] [Feature] [Testing] Add parallel dispatch E2E + regression tests [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 4]
+  - **Summary:** Worktree lifecycle, parallel merge, and conflict detection tests.
+  - **File(s):** scripts/bot/bot.test.js, scripts/bot/test_kilo_e2e.sh
+  - **Action:** Add worktree lifecycle test, parallel merge test, conflict detection test.
+  - **Dependencies:** Requires parallel dispatch implementation.
+  - **Acceptance:** `npm test` passes; `bash test_kilo_e2e.sh` passes.
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 - [ ] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
