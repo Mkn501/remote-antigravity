@@ -51,6 +51,20 @@ const DISPATCH_FILE = resolve(CENTRAL_DIR, 'wa_dispatch.json');
 const POLL_INTERVAL_MS = 2000;
 const MAX_MSG_LEN = 4096;
 
+const BOT_START_TIME = Date.now();
+
+function formatUptime(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (minutes < 1) return 'just now';
+    if (hours < 1) return `${minutes}m`;
+    if (days < 1) return `${hours}h ${minutes % 60}m`;
+    return `${days}d ${hours % 24}h`;
+}
+
 if (!TOKEN || !CHAT_ID) {
     console.error('❌ Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in .env');
     process.exit(1);
@@ -189,11 +203,14 @@ bot.onText(/^\/version/, async (msg) => {
     const modelEntry = PLATFORM_MODELS[backend]?.find(m => m.id === model);
     const modelLabel = modelEntry ? modelEntry.label : model;
 
+    const uptime = formatUptime(Date.now() - BOT_START_TIME);
+
     const versionLines = [
         'ℹ️ wa-bridge Bot',
         `📦 Version: ${require('./package.json').version}`,
         `🔧 Backend: ${backendLabel}`,
         `🤖 Model: ${modelLabel}`,
+        `⏱️ Uptime: ${uptime}`,
         `⏰ ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`
     ].join('\n');
 
