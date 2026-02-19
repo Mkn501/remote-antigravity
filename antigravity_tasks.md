@@ -14,26 +14,21 @@
 - [ ] **Difficulty**: 1 (Trivial) to 10 (Expert/Arch Change)
 - [ ] **Jules**: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
 - [ ] ->
-- [ ] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
-- [ ] **Summary:** Adds a command to display the current bot version and process uptime.
-- [ ] **File(s):** scripts/bot/bot.js
-- [ ] **Action:** Add `bot.onText(/\/version/, ...)` handler.
-- [ ] **Signature:** `(msg) => Promise<void>`
-- [ ] **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
-- [ ] **Dependencies:** None
-- [ ] **Parallel:** Yes
-- [ ] **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
-- [ ] **Tier:** ⚡ Mid
-- [ ] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
-- [ ] **Summary:** Ensures the /version command returns the expected format and doesn't crash.
-- [ ] **File(s):** scripts/bot/bot.test.js
-- [ ] **Action:** Add a test case that mocks the message and asserts the response.
-- [ ] **Signature:** `await test('/version command returns version and uptime', ...)`
-- [ ] **Scope Boundary:** ONLY modify bot.test.js.
-- [ ] **Dependencies:** None
-- [ ] **Parallel:** Yes
-- [ ] **Acceptance:** `npm test` passes.
-- [ ] **Tier:** ⚡ Mid
+- [ ] [Feature] [Bot] Add uptime tracking to `/version` command [Ref: docs/specs/version_command_spec.md] [Difficulty: 1]
+  - **Summary:** Adds uptime display to existing /version command (e.g., "Uptime: 2h 34m").
+  - **File(s):** scripts/bot/bot.js
+  - **Action:** Add `const BOT_START_TIME = Date.now();` at init, update `/version` handler.
+  - **Scope Boundary:** ONLY modify bot.js.
+  - **Dependencies:** None
+  - **Parallel:** Yes
+  - **Acceptance:** `/version` shows "Uptime: Xm" or "Uptime: Xh Ym".
+  - **Tier:** 🆓 Free
+- [ ] [Feature] [Bot] Add regression test for `/version` uptime [Difficulty: 1]
+  - **Summary:** Test uptime formatting in /version output.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Action:** Add test case for uptime display.
+  - **Dependencies:** None
+  - **Tier:** 🆓 Free
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 - [ ] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
