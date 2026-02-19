@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-02-19T16:32:22.677Z",
+  "status": "approved",
+  "tasks": [
+    {
+      "id": 1,
+      "description": "Add /version handler in bot.js",
+      "platform": "kilo",
+      "model": "openrouter/minimax/minimax-m2.5",
+      "parallel": true,
+      "deps": [],
+      "taskStatus": "done"
+    },
+    {
+      "id": 2,
+      "description": "Verify /version regression test passes",
+      "platform": "kilo",
+      "model": "openrouter/minimax/minimax-m2.5",
+      "parallel": false,
+      "deps": [
+        1
+      ]
+    }
+  ]
+}

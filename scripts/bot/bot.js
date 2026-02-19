@@ -171,12 +171,33 @@ bot.onText(/^\/help/, async (msg) => {
         '/sprint — Sprint mode',
         '/project <name> — Switch project',
         '/list — List projects',
+        '/version — Bot version info',
         '/help — This message',
         '/model — Switch AI model',
         '/backend — Switch CLI backend (Gemini/Kilo)',
         '/clear_lock — Clear stuck session lock',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help);
+});
+
+bot.onText(/^\/version/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const state = getState();
+    const backend = state.backend || 'gemini';
+    const model = state.model || '(default)';
+    const backendLabel = BACKEND_OPTIONS.find(b => b.id === backend)?.short || backend;
+    const modelEntry = PLATFORM_MODELS[backend]?.find(m => m.id === model);
+    const modelLabel = modelEntry ? modelEntry.label : model;
+
+    const versionLines = [
+        'ℹ️ wa-bridge Bot',
+        `📦 Version: ${require('./package.json').version}`,
+        `🔧 Backend: ${backendLabel}`,
+        `🤖 Model: ${modelLabel}`,
+        `⏰ ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`
+    ].join('\n');
+
+    await bot.sendMessage(CHAT_ID, versionLines);
 });
 
 // --- Model Selection ---
@@ -816,7 +837,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/sprint', '/review_plan', '/clear_lock'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
