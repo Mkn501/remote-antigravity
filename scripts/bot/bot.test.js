@@ -2089,6 +2089,99 @@ await test('e2e: watcher.sh sources bot/.env for API keys', () => {
     ok(watcher.includes('_API_KEY'), 'watcher should export API key variables');
 });
 
+// --- 18. Auto-Load Behavioral Tests (2026-02-19) ---
+console.log('\n── Behavioral: Auto-Load Backend Enforcement ──');
+
+await test('behavioral: auto-load assigns kilo models when backend=kilo', () => {
+    // Extract the Python auto-load script from watcher.sh and run it
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    const pyStart = watcher.indexOf('import json, re, sys');
+    const pyEnd = watcher.indexOf("print(f'Loaded {len(tasks)}", pyStart);
+    const pyScript = watcher.substring(pyStart, pyEnd) + "print(json.dumps(tasks))\n";
+
+    // Create mock tasks file with a matching To Do item
+    const mockDir = resolve(TEST_DIR, '_autoload_test');
+    mkdirSync(mockDir, { recursive: true });
+    const mockTasks = resolve(mockDir, 'antigravity_tasks.md');
+    const mockState = resolve(mockDir, 'state.json');
+    const specRef = 'docs/specs/test_spec.md';
+
+    writeFileSync(mockTasks, `## To Do\n- [ ] [Feature] [Bot] Add version command [Ref: ${specRef}] [Difficulty: 3]\n- [ ] [Test] [Bot] Verify version tests [Ref: ${specRef}] [Difficulty: 7]\n`);
+    writeFileSync(mockState, JSON.stringify({ backend: 'kilo', model: 'openrouter/minimax/minimax-m2.5' }, null, 2));
+
+    // Run the Python script
+    const result = execSync(`python3 -c '${pyScript.replace(/'/g, "'\\''")}' '${mockTasks}' '${mockState}' '${specRef}'`, {
+        encoding: 'utf8', timeout: 5000
+    }).trim();
+
+    const tasks = JSON.parse(result);
+    ok(tasks.length === 2, `should find 2 tasks (got ${tasks.length})`);
+    strictEqual(tasks[0].platform, 'kilo', 'task 1 platform should be kilo');
+    ok(tasks[0].model.includes('openrouter/'), `task 1 model should be openrouter (got ${tasks[0].model})`);
+    strictEqual(tasks[1].platform, 'kilo', 'task 2 platform should be kilo');
+    ok(tasks[1].model.includes('openrouter/'), `task 2 model should be openrouter (got ${tasks[1].model})`);
+
+    // Verify state was updated with execution plan
+    const updatedState = JSON.parse(readFileSync(mockState, 'utf8'));
+    strictEqual(updatedState.executionPlan.status, 'pending_review', 'plan status should be pending_review');
+
+    // Cleanup
+    rmSync(mockDir, { recursive: true, force: true });
+});
+
+await test('behavioral: auto-load assigns gemini models when backend=gemini', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    const pyStart = watcher.indexOf('import json, re, sys');
+    const pyEnd = watcher.indexOf("print(f'Loaded {len(tasks)}", pyStart);
+    const pyScript = watcher.substring(pyStart, pyEnd) + "print(json.dumps(tasks))\n";
+
+    const mockDir = resolve(TEST_DIR, '_autoload_test2');
+    mkdirSync(mockDir, { recursive: true });
+    const mockTasks = resolve(mockDir, 'antigravity_tasks.md');
+    const mockState = resolve(mockDir, 'state.json');
+    const specRef = 'docs/specs/test_spec.md';
+
+    writeFileSync(mockTasks, `## To Do\n- [ ] [Feature] [Bot] Add version command [Ref: ${specRef}] [Difficulty: 3]\n`);
+    writeFileSync(mockState, JSON.stringify({ backend: 'gemini', model: 'gemini-2.5-flash' }, null, 2));
+
+    const result = execSync(`python3 -c '${pyScript.replace(/'/g, "'\\''")}' '${mockTasks}' '${mockState}' '${specRef}'`, {
+        encoding: 'utf8', timeout: 5000
+    }).trim();
+
+    const tasks = JSON.parse(result);
+    ok(tasks.length === 1, `should find 1 task (got ${tasks.length})`);
+    strictEqual(tasks[0].platform, 'gemini', 'task platform should be gemini');
+    ok(tasks[0].model.startsWith('gemini-'), `task model should start with gemini- (got ${tasks[0].model})`);
+
+    rmSync(mockDir, { recursive: true, force: true });
+});
+
+await test('behavioral: auto-load defaults to gemini when backend not set', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    const pyStart = watcher.indexOf('import json, re, sys');
+    const pyEnd = watcher.indexOf("print(f'Loaded {len(tasks)}", pyStart);
+    const pyScript = watcher.substring(pyStart, pyEnd) + "print(json.dumps(tasks))\n";
+
+    const mockDir = resolve(TEST_DIR, '_autoload_test3');
+    mkdirSync(mockDir, { recursive: true });
+    const mockTasks = resolve(mockDir, 'antigravity_tasks.md');
+    const mockState = resolve(mockDir, 'state.json');
+    const specRef = 'docs/specs/test_spec.md';
+
+    writeFileSync(mockTasks, `## To Do\n- [ ] [Feature] [Bot] Add version command [Ref: ${specRef}] [Difficulty: 3]\n`);
+    // No backend key in state — should default to gemini
+    writeFileSync(mockState, JSON.stringify({ model: 'gemini-2.5-flash' }, null, 2));
+
+    const result = execSync(`python3 -c '${pyScript.replace(/'/g, "'\\''")}' '${mockTasks}' '${mockState}' '${specRef}'`, {
+        encoding: 'utf8', timeout: 5000
+    }).trim();
+
+    const tasks = JSON.parse(result);
+    strictEqual(tasks[0].platform, 'gemini', 'should default to gemini when backend not set');
+
+    rmSync(mockDir, { recursive: true, force: true });
+});
+
 // ============================================================================
 // SUMMARY
 // ============================================================================
