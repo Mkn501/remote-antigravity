@@ -14,20 +14,22 @@
 - [ ] **Difficulty**: 1 (Trivial) to 10 (Expert/Arch Change)
 - [ ] **Jules**: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
 - [ ] ->
-- [ ] [Feature] [Bot] Add uptime tracking to `/version` command [Ref: docs/specs/version_command_spec.md] [Difficulty: 1]
+- [x] [Feature] [Bot] Add uptime tracking to `/version` command [Ref: docs/specs/version_command_spec.md] [Difficulty: 1] - IMPLEMENTED 2026-02-19
   - **Summary:** Adds uptime display to existing /version command (e.g., "Uptime: 2h 34m").
   - **File(s):** scripts/bot/bot.js
-  - **Action:** Add `const BOT_START_TIME = Date.now();` at init, update `/version` handler.
+  - **Action:** ✅ DONE — `BOT_START_TIME` at line 54, `formatUptime()` lines 56-66, `/version` handler lines 197-218
   - **Scope Boundary:** ONLY modify bot.js.
   - **Dependencies:** None
   - **Parallel:** Yes
   - **Acceptance:** `/version` shows "Uptime: Xm" or "Uptime: Xh Ym".
   - **Tier:** 🆓 Free
-- [ ] [Feature] [Bot] Add regression test for `/version` uptime [Difficulty: 1]
-  - **Summary:** Test uptime formatting in /version output.
-  - **File(s):** scripts/bot/bot.test.js
-  - **Action:** Add test case for uptime display.
+- [ ] [Feature] [Bot] Update test to assert uptime in /version [Difficulty: 1]
+  - **Summary:** Test at line 587 needs to assert `⏱️ Uptime:` is present.
+  - **File(s):** scripts/bot/bot.test.js (lines 593-598, 606-610)
+  - **Action:** Add uptime line to versionLines array + add assertion for uptime.
   - **Dependencies:** None
+  - **Parallel:** Yes
+  - **Acceptance:** `npm test` passes with uptime assertion.
   - **Tier:** 🆓 Free
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 - [ ] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]

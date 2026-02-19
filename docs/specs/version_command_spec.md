@@ -1,6 +1,6 @@
 # Specification: /version Command with Uptime
 
-> **Status**: Draft
+> **Status**: ✅ Implemented (test needs update)
 > **Owner**: Kilo (Planner)
 > **Created**: 2026-02-19
 > **Product**: Remote Antigravity
@@ -47,21 +47,26 @@ None needed — trivial change with existing pattern.
 
 ### 8.1 Unit Tests
 - Existing test file: `scripts/bot/bot.test.js`
-- Add test case: verify uptime format
+- **Gap found**: Test at line 587 does NOT include/assert uptime — needs update to add `⏱️ Uptime:` assertion
 
 ### 8.2 Regression Suite
 - No existing tests affected
 
 ## 9. Work Orders
 
-### Task 1: Add uptime tracking to bot.js
-- **File(s):** `scripts/bot/bot.js` (lines ~30, ~183-201)
+### Task 1: ✅ DONE — Add uptime tracking to bot.js
+- **File(s):** `scripts/bot/bot.js` (lines 54, 56-66, 197-218)
+- **Status:** Implemented
+- **Evidence:** `BOT_START_TIME` constant, `formatUptime()` function, `/version` handler with uptime output
+
+### Task 2: Update test to assert uptime
+- **File(s):** `scripts/bot/bot.test.js` (lines 587-611)
 - **Action:** Modify
-- **Signature:** N/A (config constant and output formatting)
-- **Scope Boundary:** ONLY modify bot.js. No other files.
+- **Signature:** N/A (test assertion)
+- **Scope Boundary:** ONLY modify bot.test.js. No other files.
 - **Dependencies:** None
 - **Parallel:** Yes
-- **Acceptance:** `npm test` passes
+- **Acceptance:** Test asserts `⏱️ Uptime:` is present in output
 - **Tier:** 🆓 Free
 - **Difficulty:** 1/10
 
