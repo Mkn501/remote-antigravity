@@ -896,8 +896,22 @@ setInterval(async () => {
             const ageMs = Date.now() - stats.mtimeMs;
             const ageMin = Math.floor(ageMs / 1000 / 60);
 
-            // Long running task (> 10 mins), warn every 5 mins
-            if (ageMin > 10 && ageMin % 5 === 0) {
+            // Check if watcher is in step-through dispatch wait (valid idle)
+            let inDispatchWait = false;
+            const dispatchFile = join(DOT_GEMINI, 'wa_dispatch.json');
+            if (existsSync(dispatchFile)) {
+                try {
+                    const dispatch = JSON.parse(readFileSync(dispatchFile, 'utf8'));
+                    if (dispatch.status === 'approved' && Array.isArray(dispatch.tasks)) {
+                        const hasDone = dispatch.tasks.some(t => t.taskStatus === 'done');
+                        const hasPending = dispatch.tasks.some(t => !t.taskStatus || t.taskStatus === 'pending' || t.taskStatus === null);
+                        inDispatchWait = hasDone && hasPending;
+                    }
+                } catch { /* ignore parse errors */ }
+            }
+
+            // Long running task (> 10 mins), warn every 5 mins — but skip if in dispatch wait
+            if (ageMin > 10 && ageMin % 5 === 0 && !inDispatchWait) {
                 await bot.sendMessage(CHAT_ID, `⚠️ Health Alert\nTask running for ${ageMin} minutes.\nUse /stop to halt or /clear_lock if stuck.`);
             }
 
