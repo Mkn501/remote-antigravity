@@ -595,6 +595,7 @@ await test('/version command returns version and uptime', async () => {
         `📦 Version: ${version}`,
         `🔧 Backend: ${backendLabel}`,
         `🤖 Model: ${modelLabel}`,
+        `⏱️ Uptime: just now`,
         `⏰ ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`
     ].join('\n');
 
@@ -608,6 +609,7 @@ await test('/version command returns version and uptime', async () => {
     ok(receivedMessages[0].text.includes('🔧 Backend:'), 'message should include backend');
     ok(receivedMessages[0].text.includes('🤖 Model:'), 'message should include model');
     ok(receivedMessages[0].text.includes('⏰'), 'message should include timestamp');
+    ok(receivedMessages[0].text.includes('⏱️ Uptime:'), 'message should include uptime');
 });
 
 // ---- 9. Error Resilience ----
