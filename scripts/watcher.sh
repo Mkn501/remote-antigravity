@@ -501,6 +501,18 @@ tasks_path = sys.argv[1]
 state_path = sys.argv[2]
 spec_ref = sys.argv[3]
 
+# Read current backend from state
+with open(state_path) as f:
+    cur_state = json.load(f)
+backend = cur_state.get('backend', 'gemini')
+
+# Backend-aware tier defaults
+TIER_MAP = {
+    'gemini': {'top': ('gemini', 'gemini-2.5-pro'), 'mid': ('gemini', 'gemini-2.5-flash'), 'free': ('gemini', 'gemini-2.0-flash-lite')},
+    'kilo':   {'top': ('kilo', 'openrouter/minimax/minimax-m2.5'), 'mid': ('kilo', 'openrouter/minimax/minimax-m2.5'), 'free': ('kilo', 'openrouter/z-ai/glm-5')}
+}
+tier_defaults = TIER_MAP.get(backend, TIER_MAP['gemini'])
+
 # Read tasks file and find To Do items matching this spec
 with open(tasks_path) as f:
     content = f.read()
@@ -514,14 +526,16 @@ if not matches:
 
 tasks = []
 for i, (cat, topic, desc, diff) in enumerate(matches, 1):
+    tier = 'mid' if int(diff) <= 5 else 'top'
+    plat, model = tier_defaults.get(tier, tier_defaults['mid'])
     tasks.append({
         'id': i,
         'description': desc.strip(),
         'summary': f'{cat}/{topic}',
         'difficulty': int(diff),
-        'tier': 'mid' if int(diff) <= 5 else 'top',
-        'platform': 'gemini',
-        'model': 'gemini-2.5-flash',
+        'tier': tier,
+        'platform': plat,
+        'model': model,
         'parallel': False,
         'deps': list(range(1, i)) if i > 1 else [],
         'status': 'pending'
