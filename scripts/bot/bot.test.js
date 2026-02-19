@@ -11,6 +11,7 @@ import {
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
+import { execSync } from 'child_process';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(SCRIPT_DIR, '..', '..');
@@ -1973,6 +1974,119 @@ await test('regression: PLAN_MODE_FILE defined as global variable', () => {
     }
     ok(globalDefLine > 0 && globalDefLine <= 50,
         `PLAN_MODE_FILE should be defined in first 50 lines (found at line ${globalDefLine})`);
+});
+
+// --- 17. Kilo CLI E2E Regression (2026-02-19) ---
+console.log('\n── Regression: Kilo CLI E2E ──');
+
+await test('e2e: .env file exists with KILO_API_KEY', () => {
+    const envFile = resolve(PROJECT_ROOT, 'scripts', 'bot', '.env');
+    ok(existsSync(envFile), '.env file should exist');
+    const env = readFileSync(envFile, 'utf8');
+    ok(env.includes('KILO_API_KEY='), 'KILO_API_KEY should be defined in .env');
+});
+
+await test('e2e: watcher maps KILO_API_KEY → OPENROUTER_API_KEY', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('KILO_API_KEY'), 'watcher should reference KILO_API_KEY');
+    ok(watcher.includes('OPENROUTER_API_KEY'), 'watcher should map to OPENROUTER_API_KEY');
+});
+
+await test('e2e: TIER_DEFAULTS is backend-specific', () => {
+    // Read bot.js and verify TIER_DEFAULTS has per-backend tiers
+    const botSrc = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(botSrc.includes("TIER_DEFAULTS = {"), 'TIER_DEFAULTS should exist');
+    // Should have both gemini and kilo sub-objects
+    ok(botSrc.includes("gemini: {"), 'TIER_DEFAULTS should have gemini key');
+    ok(botSrc.includes("kilo: {"), 'TIER_DEFAULTS should have kilo key');
+    // Each should have tier entries
+    const tierBlock = botSrc.substring(
+        botSrc.indexOf('TIER_DEFAULTS = {'),
+        botSrc.indexOf('};', botSrc.indexOf('TIER_DEFAULTS = {')) + 2
+    );
+    // Gemini tiers use gemini models
+    ok(tierBlock.includes("'gemini-2.5-pro'") || tierBlock.includes('"gemini-2.5-pro"'),
+        'gemini top tier should use gemini-2.5-pro');
+    // Kilo tiers use openrouter models
+    ok(tierBlock.includes("'openrouter/minimax/minimax-m2.5'") || tierBlock.includes('"openrouter/minimax/minimax-m2.5"'),
+        'kilo top tier should use openrouter/minimax/minimax-m2.5');
+});
+
+await test('e2e: applyTierDefaults reads active backend from state', () => {
+    const botSrc = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const applyFn = botSrc.substring(
+        botSrc.indexOf('function applyTierDefaults'),
+        botSrc.indexOf('}', botSrc.indexOf('return applied', botSrc.indexOf('applyTierDefaults'))) + 1
+    );
+    ok(applyFn.includes('state.backend'), 'applyTierDefaults should read state.backend');
+    ok(applyFn.includes('TIER_DEFAULTS[backend]'), 'applyTierDefaults should index TIER_DEFAULTS by backend');
+    ok(!applyFn.includes("defaultPlatform = 'gemini'"), 'should NOT hardcode defaultPlatform to gemini');
+});
+
+await test('e2e: platform selector locked to active backend', () => {
+    const botSrc = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    // The ep_task: handler should use activeBackend, not Object.keys(PLATFORM_MODELS)
+    const taskHandler = botSrc.substring(
+        botSrc.indexOf("ep_task:"),
+        botSrc.indexOf("ep_task_plat:", botSrc.indexOf("ep_task:")) + 50
+    );
+    ok(taskHandler.includes('activeBackend') || taskHandler.includes('getState().backend'),
+        'task override should use active backend not all platforms');
+    ok(!taskHandler.includes('Object.keys(PLATFORM_MODELS)'),
+        'should NOT show Object.keys(PLATFORM_MODELS) — would show all backends');
+});
+
+await test('e2e: health check uses CENTRAL_DIR not DOT_GEMINI', () => {
+    const botSrc = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(!botSrc.includes('DOT_GEMINI'), 'bot.js should NOT reference DOT_GEMINI (undefined)');
+    ok(botSrc.includes("CENTRAL_DIR, 'wa_dispatch.json'"),
+        'health check dispatch path should use CENTRAL_DIR');
+});
+
+await test('e2e: EXTRA_FLAGS uses safe expansion in dispatch', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    // Dispatch handler should use safe expansion: ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}
+    ok(watcher.includes('EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"'),
+        'EXTRA_FLAGS should use safe expansion pattern for set -u');
+    // Should NOT have bare "local EXTRA_FLAGS" in main loop
+    const mainLoop = watcher.substring(watcher.indexOf('# DISPATCH EXECUTION'));
+    ok(!mainLoop.includes('local EXTRA_FLAGS'),
+        'EXTRA_FLAGS should NOT use local keyword in main loop');
+});
+
+await test('e2e: dispatch health check is dispatch-aware', () => {
+    const botSrc = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(botSrc.includes('inDispatchWait'), 'health check should have inDispatchWait flag');
+    ok(botSrc.includes('hasDone') && botSrc.includes('hasPending'),
+        'health check should detect done+pending state as valid wait');
+    // The health alert should check !inDispatchWait
+    ok(botSrc.includes('!inDispatchWait'),
+        'health alert should be suppressed when in dispatch wait');
+});
+
+await test('e2e: kilo E2E test script exists', () => {
+    const e2eScript = resolve(SCRIPT_DIR, 'test_kilo_e2e.sh');
+    ok(existsSync(e2eScript), 'test_kilo_e2e.sh should exist');
+    const script = readFileSync(e2eScript, 'utf8');
+    ok(script.includes('Direct Kilo CLI Call'), 'E2E script should test direct Kilo calls');
+    ok(script.includes('OPENROUTER_API_KEY'), 'E2E script should test API key mapping');
+});
+
+await test('e2e: kilo CLI binary available', () => {
+    try {
+        const result = execSync('which kilo 2>/dev/null || ls ~/.npm-global/bin/kilo 2>/dev/null || ls /usr/local/bin/kilo 2>/dev/null || npm root -g 2>/dev/null', { encoding: 'utf8', timeout: 5000 }).trim();
+        // Just check kilo exists somewhere — npm test subprocess may have restricted PATH
+        const kiloExists = existsSync('/usr/local/bin/kilo') || existsSync(resolve(process.env.HOME || '', '.npm-global', 'bin', 'kilo')) || result.includes('kilo');
+        ok(kiloExists, 'kilo CLI should be installed globally');
+    } catch {
+        ok(false, 'kilo CLI not found — install with: npm install -g @kilocode/cli');
+    }
+});
+
+await test('e2e: watcher.sh sources bot/.env for API keys', () => {
+    const watcher = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(watcher.includes('bot/.env'), 'watcher should source bot/.env');
+    ok(watcher.includes('_API_KEY'), 'watcher should export API key variables');
 });
 
 // ============================================================================
