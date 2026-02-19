@@ -19,7 +19,8 @@
       "parallel": false,
       "deps": [
         1
-      ]
+      ],
+      "taskStatus": "done"
     }
   ]
 }

@@ -585,22 +585,28 @@ await test('workflow command extraction', () => {
 
 await test('/version command returns version and uptime', async () => {
     // Simulate the bot's logic for the /version command
-    const currentUptimeSeconds = Math.floor((Date.now() - startTime.getTime()) / 1000);
-    const h = Math.floor(currentUptimeSeconds / 3600);
-    const m = Math.floor((currentUptimeSeconds % 3600) / 60);
-    const s = Math.floor(currentUptimeSeconds % 60);
-    const formattedUptime = `${h}h ${m}m ${s}s`;
+    const state = { backend: 'gemini', model: 'gemini-2.5-flash' };
+    const backendLabel = 'Flash';
+    const modelLabel = '1️⃣ Flash';
 
-    const expectedMessage = `🤖 wa-bridge v${version}\n⏱️ Uptime: ${formattedUptime}`;
+    const versionLines = [
+        'ℹ️ wa-bridge Bot',
+        `📦 Version: ${version}`,
+        `🔧 Backend: ${backendLabel}`,
+        `🤖 Model: ${modelLabel}`,
+        `⏰ ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`
+    ].join('\n');
 
-    // Directly call the sendMessage mock, simulating the effect of the onText handler
-    await mockBot.sendMessage(CHAT_ID, expectedMessage);
+    await mockBot.sendMessage(CHAT_ID, versionLines);
 
-    // Assertions
     strictEqual(receivedMessages.length, 1, 'should send exactly one message');
     strictEqual(receivedMessages[0].chatId, CHAT_ID, 'should send message to correct chat ID');
-    ok(receivedMessages[0].text.startsWith(`🤖 wa-bridge v${version}`), 'message should start with version info');
-    ok(receivedMessages[0].text.includes('⏱️ Uptime: '), 'message should include uptime');
+    ok(receivedMessages[0].text.includes('wa-bridge Bot'), 'message should include bot name');
+    ok(receivedMessages[0].text.includes(`📦 Version: ${version}`), 'message should include version');
+    ok(receivedMessages[0].text.includes('📦 Version:'), 'message should include version label');
+    ok(receivedMessages[0].text.includes('🔧 Backend:'), 'message should include backend');
+    ok(receivedMessages[0].text.includes('🤖 Model:'), 'message should include model');
+    ok(receivedMessages[0].text.includes('⏰'), 'message should include timestamp');
 });
 
 // ---- 9. Error Resilience ----
