@@ -898,7 +898,7 @@ setInterval(async () => {
 
             // Check if watcher is in step-through dispatch wait (valid idle)
             let inDispatchWait = false;
-            const dispatchFile = join(DOT_GEMINI, 'wa_dispatch.json');
+            const dispatchFile = join(CENTRAL_DIR, 'wa_dispatch.json');
             if (existsSync(dispatchFile)) {
                 try {
                     const dispatch = JSON.parse(readFileSync(dispatchFile, 'utf8'));
