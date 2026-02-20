@@ -108,6 +108,7 @@ cd ../..
 | `/restart` | Kill + restart watcher with diagnostics |
 | `/watchdog` | Show watchdog status + restart history |
 | `/clear_lock` | Clear stuck session lock |
+| `/diagnose` | Trigger LLM crash diagnosis from logs |
 | `/list` | List registered projects |
 | `/add <name> <path>` | Register a new project |
 
