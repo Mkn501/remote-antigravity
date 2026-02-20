@@ -425,7 +425,7 @@ await test('[contract] all 18 bot commands have handlers in v3', () => {
         'sprint', 'stop',
         'review_plan',
         'kill', 'clear_lock', 'restart', 'watchdog',
-        'diagnose', 'autofix', 'apply_fix', 'discard_fix', 'ping'
+        'diagnose', 'autofix', 'apply_fix', 'discard_fix', 'ping', 'ping'
     ];
     for (const cmd of expectedCommands) {
         const pattern = new RegExp(`registerCommand\\(.*\\\\\\/${cmd}`);
