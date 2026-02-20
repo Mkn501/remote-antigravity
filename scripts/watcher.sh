@@ -272,7 +272,10 @@ while true; do
                     echo "🧠 Using $ACTIVE_MODEL for planning workflow" >&2
                     ;;
                 *)
-                    if [ "$IS_PLAN_FEATURE" = true ]; then
+                    if [ "$IS_DIAGNOSIS" = true ]; then
+                        ACTIVE_MODEL="$ROUTINE_MODEL"
+                        echo "⚡ Using $ROUTINE_MODEL for diagnosis (fast + reliable)" >&2
+                    elif [ "$IS_PLAN_FEATURE" = true ]; then
                         ACTIVE_MODEL="${SELECTED_MODEL:-$PLANNING_MODEL}"
                         echo "🧠 Using $ACTIVE_MODEL for plan refinement" >&2
                     else
