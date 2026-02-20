@@ -155,6 +155,14 @@ bot.on('message', async (msg) => {
 startOutboxPoller(bot, ctx);
 startHealthCheck(bot, ctx);
 
+// Send startup notification to Telegram
+const { version } = JSON.parse(readFileSync(resolve(SCRIPT_DIR, 'package.json'), 'utf8'));
+const state = getState();
+const backendLabel = PLATFORM_LABELS[state.backend || 'gemini'] || state.backend || 'gemini';
+bot.sendMessage(CHAT_ID, `✅ Bot v3 started\n📦 ${version} | ${backendLabel}\n⏰ ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`).catch(err => {
+    console.error(`⚠️ Failed to send startup notification: ${err.message}`);
+});
+
 // ============================================================================
 // Error Handling + Graceful Shutdown
 // ============================================================================

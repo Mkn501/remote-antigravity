@@ -78,14 +78,12 @@ case "${1:-start}" in
         pkill -f "watcher.sh" 2>/dev/null
         sleep 1
 
-        # Note: old start.sh forced 'main' branch. Removed for v3 since
-        # bot_v3.js may live on a feature branch during development.
-        # Uncomment after merging bot_v3 to main:
-        # CURRENT_BRANCH=$(git -C "$SCRIPT_DIR" branch --show-current 2>/dev/null)
-        # if [ "$CURRENT_BRANCH" != "main" ]; then
-        #     echo -e "  ${YELLOW}⚠️  On branch '$CURRENT_BRANCH' — switching to main${NC}"
-        #     git -C "$SCRIPT_DIR" checkout main 2>/dev/null
-        # fi
+        # Always run from main branch
+        CURRENT_BRANCH=$(git -C "$SCRIPT_DIR" branch --show-current 2>/dev/null)
+        if [ "$CURRENT_BRANCH" != "main" ]; then
+            echo -e "  ${YELLOW}⚠️  On branch '$CURRENT_BRANCH' — switching to main${NC}"
+            git -C "$SCRIPT_DIR" checkout main 2>/dev/null
+        fi
 
         # Rotate logs — diagnosis reads last 30 lines, stale entries cause false reports
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
