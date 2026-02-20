@@ -12,6 +12,25 @@
 
 ## To Do
 
+- [ ] [Feature] [Bot] Implement `/ping` command [Ref: docs/specs/ping_command_spec.md] [Difficulty: 1]
+  - **Summary:** Adds a simple connectivity check command that replies "pong".
+  - **File(s):** scripts/bot/commands/general.js
+  - **Action:** Add `registerCommand(/^\/ping/, ...)` handler.
+  - **Signature:** `(msg) => Promise<void>`
+  - **Scope Boundary:** ONLY modify general.js.
+  - **Dependencies:** None
+  - **Parallel:** Yes
+  - **Acceptance:** `/ping` returns "pong".
+  - **Tier:** ⚡ Mid
+- [ ] [Feature] [Testing] Add `/ping` regression test [Ref: docs/specs/ping_command_spec.md] [Difficulty: 1]
+  - **Summary:** Verifies `/ping` command validation and response.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Action:** Add test case for `/ping`.
+  - **Signature:** `await test('/ping replies pong', ...)`
+  - **Scope Boundary:** ONLY modify bot.test.js.
+  - **Dependencies:** Requires `/ping` command.
+  - **Acceptance:** `npm test` passes.
+  - **Tier:** ⚡ Mid
 - [ ] [Feature] [Bot] Add dispatch mode field and Auto-Run button [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
   - **Summary:** Adds `mode` field to dispatch JSON and "🚀 Auto-Run" button in plan review.
   - **File(s):** scripts/bot/bot.js (lines ~525-540, ep_execute handler)

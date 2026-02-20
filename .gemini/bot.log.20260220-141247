@@ -1,0 +1,14 @@
+🤖 wa-bridge bot started
+   📂 Default Project: /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity
+   📥 Inbox:   /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini/wa_inbox.json
+   📤 Outbox:  /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini/wa_outbox.json
+   💾 State:   /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini/state.json
+   💬 Chat ID: 8270825886
+
+🔔 Sending startup notification to chat 8270825886...
+🔔 Startup notification sent (msg_id: 1095)
+📤 2026-02-20T13:09:18.335Z | 💬 TEXT | 📥 Message received: msg_0
+📤 2026-02-20T13:09:18.385Z | 💬 TEXT | 🧠 Running Gemini CLI (gemini-3-pro-preview)...
+📤 2026-02-20T13:11:34.327Z | 💬 TEXT | 💾 Changes committed
+📤 2026-02-20T13:11:34.371Z | 💬 TEXT | ✅ Ticked off completed tasks in `antigravity_tasks.md`:
+• Moved /version, /re...
