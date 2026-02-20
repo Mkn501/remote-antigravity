@@ -12,30 +12,6 @@
 
 ## To Do
 
-- [x] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4]
-- [x] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4]
-- [x] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2]
-
-- [x] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
-- [x] **Summary:** Adds a command to display the current bot version and process uptime.
-- [x] **File(s):** scripts/bot/bot.js
-- [x] **Action:** Add `bot.onText(/\/version/, ...)` handler.
-- [x] **Signature:** `(msg) => Promise<void>`
-- [x] **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
-- [ ] **Dependencies:** None
-- [ ] **Parallel:** Yes
-- [x] **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
-- [ ] **Tier:** ⚡ Mid
-- [x] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
-- [x] **Summary:** Ensures the /version command returns the expected format and doesn't crash.
-- [x] **File(s):** scripts/bot/bot.test.js
-- [x] **Action:** Add a test case that mocks the message and asserts the response.
-- [x] **Signature:** `await test('/version command returns version and uptime', ...)`
-- [x] **Scope Boundary:** ONLY modify bot.test.js.
-- [ ] **Dependencies:** None
-- [ ] **Parallel:** Yes
-- [x] **Acceptance:** `npm test` passes.
-- [ ] **Tier:** ⚡ Mid
 - [ ] [Feature] [Bot] Add dispatch mode field and Auto-Run button [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
   - **Summary:** Adds `mode` field to dispatch JSON and "🚀 Auto-Run" button in plan review.
   - **File(s):** scripts/bot/bot.js (lines ~525-540, ep_execute handler)
@@ -69,47 +45,6 @@
   - **Action:** Add worktree lifecycle test, parallel merge test, conflict detection test.
   - **Dependencies:** Requires parallel dispatch implementation.
   - **Acceptance:** `npm test` passes; `bash test_kilo_e2e.sh` passes.
-- [x] [Feature] [Bot] Implement `/restart` command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
-  - **Summary:** Telegram command to kill watcher, clear stale lock, spawn new watcher, report diagnostics.
-  - **File(s):** scripts/bot/bot.js (new handler)
-  - **Action:** Add `/restart` handler with watcher kill, lock cleanup, log tail, watcher spawn.
-  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
-  - **Acceptance:** `npm test` passes; `/restart` in Telegram restarts watcher.
-- [x] [Feature] [Testing] Add `/restart` regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2]
-  - **Summary:** Tests for restart handler, lock cleanup, BOT_COMMANDS update.
-  - **File(s):** scripts/bot/bot.test.js
-  - **Dependencies:** Requires `/restart` command.
-  - **Acceptance:** `npm test` passes with new tests.
-- [x] [Feature] [Infra] Create external watchdog script + launchd plist [Ref: docs/specs/self_healing_spec.md] [Difficulty: 4]
-  - **Summary:** Independent process that monitors bot + watcher PIDs, auto-restarts on crash.
-  - **File(s):** scripts/watchdog.sh (NEW), com.antigravity.watchdog.plist (NEW)
-  - **Action:** Create health check script with restart loop guard (max 3/hour). Create launchd plist.
-  - **Scope Boundary:** ONLY create new files. Do NOT modify existing scripts.
-  - **Acceptance:** `bash -n watchdog.sh` passes.
-- [x] [Feature] [Bot] Add `/watchdog` status command + tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
-  - **Summary:** Shows watchdog status (last restart, restart count, uptime) in Telegram.
-  - **File(s):** scripts/bot/bot.js, scripts/bot/bot.test.js
-  - **Dependencies:** Requires watchdog script.
-  - **Acceptance:** `npm test` passes; `/watchdog` shows status in Telegram.
-- [x] [Feature] [Infra] Add LLM diagnosis trigger to watchdog [Ref: docs/specs/self_healing_spec.md] [Difficulty: 5]
-  - **Summary:** Watchdog detects ≥2 crashes/hour, spawns Kilo CLI to diagnose from logs, reports to Telegram.
-  - **File(s):** scripts/watchdog.sh (existing), scripts/diagnose_prompt.txt (NEW)
-  - **Action:** Add crash count check, build diagnosis prompt from log tails, spawn `kilo run --auto`.
-  - **Scope Boundary:** ONLY modify watchdog.sh and create diagnose_prompt.txt. Do NOT touch bot.js.
-  - **Acceptance:** `bash -n watchdog.sh` passes; diagnosis trigger logic present.
-- [x] [Feature] [Bot] Add `/diagnose` manual trigger command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
-  - **Summary:** Telegram command to manually trigger LLM diagnosis from watcher + bot logs.
-  - **File(s):** scripts/bot/bot.js (new handler)
-  - **Action:** Add `/diagnose` handler: collects last 30 lines of logs, writes diagnosis prompt to inbox.
-  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh or watchdog.sh.
-  - **Acceptance:** `npm test` passes; `/diagnose` in Telegram triggers LLM analysis.
-- [x] [Feature] [Testing] Add Phase 3 diagnosis regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2]
-  - **Summary:** Tests for /diagnose handler, BOT_COMMANDS, watchdog diagnosis trigger, dedup guard.
-  - **File(s):** scripts/bot/bot.test.js
-  - **Dependencies:** Requires diagnosis trigger + /diagnose command.
-  - **Acceptance:** `npm test` passes with new tests.
-- [x] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
-- [x] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
 - [ ] [Security] [Bot] Remove duplicate `/kill` handler (SEC-4, P0) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
 - [ ] [Security] [Bot] Fix overly broad `pkill` patterns in `/kill` (SEC-2, P0) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
@@ -131,6 +66,70 @@
 
 ## Done
 
+- [x] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4] - COMPLETED 2026-02-20
+- [x] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4] - COMPLETED 2026-02-20
+- [x] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2] - COMPLETED 2026-02-20
+- [x] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2] - COMPLETED 2026-02-20
+- [x] **Summary:** Adds a command to display the current bot version and process uptime.
+- [x] **File(s):** scripts/bot/bot.js
+- [x] **Action:** Add `bot.onText(/\/version/, ...)` handler.
+- [x] **Signature:** `(msg) => Promise<void>`
+- [x] **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
+- [ ] **Dependencies:** None
+- [ ] **Parallel:** Yes
+- [x] **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
+- [ ] **Tier:** ⚡ Mid
+- [x] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2] - COMPLETED 2026-02-20
+- [x] **Summary:** Ensures the /version command returns the expected format and doesn't crash.
+- [x] **File(s):** scripts/bot/bot.test.js
+- [x] **Action:** Add a test case that mocks the message and asserts the response.
+- [x] **Signature:** `await test('/version command returns version and uptime', ...)`
+- [x] **Scope Boundary:** ONLY modify bot.test.js.
+- [ ] **Dependencies:** None
+- [ ] **Parallel:** Yes
+- [x] **Acceptance:** `npm test` passes.
+- [ ] **Tier:** ⚡ Mid
+- [x] [Feature] [Bot] Implement `/restart` command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3] - COMPLETED 2026-02-20
+  - **Summary:** Telegram command to kill watcher, clear stale lock, spawn new watcher, report diagnostics.
+  - **File(s):** scripts/bot/bot.js (new handler)
+  - **Action:** Add `/restart` handler with watcher kill, lock cleanup, log tail, watcher spawn.
+  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
+  - **Acceptance:** `npm test` passes; `/restart` in Telegram restarts watcher.
+- [x] [Feature] [Testing] Add `/restart` regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2] - COMPLETED 2026-02-20
+  - **Summary:** Tests for restart handler, lock cleanup, BOT_COMMANDS update.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Dependencies:** Requires `/restart` command.
+  - **Acceptance:** `npm test` passes with new tests.
+- [x] [Feature] [Infra] Create external watchdog script + launchd plist [Ref: docs/specs/self_healing_spec.md] [Difficulty: 4] - COMPLETED 2026-02-20
+  - **Summary:** Independent process that monitors bot + watcher PIDs, auto-restarts on crash.
+  - **File(s):** scripts/watchdog.sh (NEW), com.antigravity.watchdog.plist (NEW)
+  - **Action:** Create health check script with restart loop guard (max 3/hour). Create launchd plist.
+  - **Scope Boundary:** ONLY create new files. Do NOT modify existing scripts.
+  - **Acceptance:** `bash -n watchdog.sh` passes.
+- [x] [Feature] [Bot] Add `/watchdog` status command + tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3] - COMPLETED 2026-02-20
+  - **Summary:** Shows watchdog status (last restart, restart count, uptime) in Telegram.
+  - **File(s):** scripts/bot/bot.js, scripts/bot/bot.test.js
+  - **Dependencies:** Requires watchdog script.
+  - **Acceptance:** `npm test` passes; `/watchdog` shows status in Telegram.
+- [x] [Feature] [Infra] Add LLM diagnosis trigger to watchdog [Ref: docs/specs/self_healing_spec.md] [Difficulty: 5] - COMPLETED 2026-02-20
+  - **Summary:** Watchdog detects ≥2 crashes/hour, spawns Kilo CLI to diagnose from logs, reports to Telegram.
+  - **File(s):** scripts/watchdog.sh (existing), scripts/diagnose_prompt.txt (NEW)
+  - **Action:** Add crash count check, build diagnosis prompt from log tails, spawn `kilo run --auto`.
+  - **Scope Boundary:** ONLY modify watchdog.sh and create diagnose_prompt.txt. Do NOT touch bot.js.
+  - **Acceptance:** `bash -n watchdog.sh` passes; diagnosis trigger logic present.
+- [x] [Feature] [Bot] Add `/diagnose` manual trigger command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3] - COMPLETED 2026-02-20
+  - **Summary:** Telegram command to manually trigger LLM diagnosis from watcher + bot logs.
+  - **File(s):** scripts/bot/bot.js (new handler)
+  - **Action:** Add `/diagnose` handler: collects last 30 lines of logs, writes diagnosis prompt to inbox.
+  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh or watchdog.sh.
+  - **Acceptance:** `npm test` passes; `/diagnose` in Telegram triggers LLM analysis.
+- [x] [Feature] [Testing] Add Phase 3 diagnosis regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2] - COMPLETED 2026-02-20
+  - **Summary:** Tests for /diagnose handler, BOT_COMMANDS, watchdog diagnosis trigger, dedup guard.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Dependencies:** Requires diagnosis trigger + /diagnose command.
+  - **Acceptance:** `npm test` passes with new tests.
+- [x] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1] - COMPLETED 2026-02-20
+- [x] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2] - COMPLETED 2026-02-20
 - [x] [Feature] [Hooks] Create BeforeAgent hook script for inbox injection [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 3] - COMPLETED 2026-02-15
 - [x] [Feature] [Hooks] Create AfterAgent hook script for outbox writing [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 3] - COMPLETED 2026-02-15
 - [x] [Feature] [Bot] Implement Telegram message listener bot [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 5] - COMPLETED 2026-02-15
