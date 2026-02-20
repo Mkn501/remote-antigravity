@@ -2183,6 +2183,41 @@ await test('behavioral: auto-load defaults to gemini when backend not set', () =
 });
 
 // ============================================================================
+// 19. Self-Healing: /restart Command
+// ============================================================================
+
+await test('self-healing: /restart handler exists in bot.js', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes("bot.onText(/^\\/restart/"), 'should have /restart handler');
+});
+
+await test('self-healing: /restart clears lock file', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    // Handler should reference LOCK_FILE for cleanup
+    const restartBlock = src.substring(src.indexOf('/restart'));
+    ok(restartBlock.includes('LOCK_FILE'), '/restart should reference LOCK_FILE for cleanup');
+});
+
+await test('self-healing: /restart clears dispatch continue signal', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const restartBlock = src.substring(src.indexOf('/restart'));
+    ok(restartBlock.includes('wa_dispatch_continue'), '/restart should clean up continue signal');
+});
+
+await test('self-healing: /restart is in BOT_COMMANDS', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const commandsMatch = src.match(/BOT_COMMANDS\s*=\s*\[(.*?)\]/s);
+    ok(commandsMatch, 'BOT_COMMANDS array should exist');
+    ok(commandsMatch[1].includes('/restart'), '/restart should be in BOT_COMMANDS');
+});
+
+await test('self-healing: /restart listed in /help output', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const helpBlock = src.substring(src.indexOf('/help/'), src.indexOf("].join('\\n')"));
+    ok(src.includes('/restart'), '/restart should be in /help text');
+});
+
+// ============================================================================
 // SUMMARY
 // ============================================================================
 

@@ -1,3 +1,9 @@
+<!-- TASK_SCHEMA:
+  Category: [Bug], [Feature], [Infra], [Research], [Docs], [Security], [Release], [UX], [Architecture]
+  Topic: Optional sub-area (e.g., [Hooks], [Bot], [WhatsApp])
+  Difficulty: 1 (Trivial) to 10 (Expert/Arch Change)
+  Jules: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
+-->
 # Tasks - Antigravity Tasks
 
 ## In Progress
@@ -9,11 +15,7 @@
 - [ ] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4]
 - [ ] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4]
 - [ ] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2]
-- [ ] **Category**: [Bug], [Feature], [Infra], [Research], [Docs], [Security], [Release], [UX], [Architecture]
-- [ ] **Topic**: Optional sub-area (e.g., [Hooks], [Bot], [WhatsApp])
-- [ ] **Difficulty**: 1 (Trivial) to 10 (Expert/Arch Change)
-- [ ] **Jules**: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
-- [ ] ->
+
 - [ ] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
 - [ ] **Summary:** Adds a command to display the current bot version and process uptime.
 - [ ] **File(s):** scripts/bot/bot.js

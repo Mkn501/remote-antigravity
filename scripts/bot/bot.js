@@ -21,7 +21,8 @@
 
 import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
-import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, statSync, unlinkSync, createReadStream } from 'fs';
+import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, statSync, unlinkSync, createReadStream, openSync } from 'fs';
+import { spawn } from 'child_process';
 import { resolve, dirname, isAbsolute, join } from 'path';
 import { tmpdir } from 'os';
 import { execSync } from 'child_process';
@@ -176,6 +177,7 @@ bot.onText(/^\/help/, async (msg) => {
         '/model — Switch AI model',
         '/backend — Switch CLI backend (Gemini/Kilo)',
         '/clear_lock — Clear stuck session lock',
+        '/restart — Kill + restart watcher with diagnostics',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help);
 });
@@ -854,7 +856,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
@@ -891,6 +893,66 @@ bot.onText(/^\/clear_lock/, async (msg) => {
     } else {
         await bot.sendMessage(CHAT_ID, 'ℹ️ No lock file found.');
     }
+});
+
+// --- /restart Command: Kill watcher, clear state, restart, report ---
+const WATCHER_PATH = resolve(SCRIPT_DIR, '..', 'watcher.sh');
+const WATCHER_LOG = resolve(CENTRAL_DIR, 'watcher.log');
+
+bot.onText(/^\/restart/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    await bot.sendMessage(CHAT_ID, '🔄 Restarting watcher...');
+    console.log(`🔄 ${new Date().toISOString()} | /restart invoked`);
+
+    // 1. Kill existing watcher
+    let oldPid = 'unknown';
+    try {
+        oldPid = execSync('pgrep -f "watcher.sh"', { encoding: 'utf8', timeout: 3000 }).trim();
+        execSync('pkill -f "watcher.sh"', { timeout: 3000 });
+    } catch { /* no watcher running */ }
+
+    // 2. Clear stale state
+    const continueFile = resolve(CENTRAL_DIR, 'wa_dispatch_continue.json');
+    [LOCK_FILE, continueFile].forEach(f => {
+        try { if (existsSync(f)) unlinkSync(f); } catch { /* ignore */ }
+    });
+
+    // 3. Read last error from watcher log
+    let logTail = '(no log available)';
+    try {
+        logTail = execSync(
+            `tail -10 "${WATCHER_LOG}"`,
+            { encoding: 'utf8', timeout: 3000 }
+        ).trim();
+    } catch { /* log file may not exist */ }
+
+    // 4. Spawn new watcher
+    let newPid = 'failed';
+    try {
+        const logFd = openSync(WATCHER_LOG, 'a');
+        const watcher = spawn('bash', [WATCHER_PATH], {
+            detached: true,
+            stdio: ['ignore', logFd, logFd]
+        });
+        watcher.unref();
+        newPid = watcher.pid;
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Failed to start watcher: ${err.message}`);
+        return;
+    }
+
+    // 5. Report
+    const report = [
+        `✅ Watcher restarted`,
+        `   Old PID: ${oldPid || 'not running'}`,
+        `   New PID: ${newPid}`,
+        `🧹 Lock + continue signal cleared`,
+        '',
+        `📋 Last watcher log:`,
+        logTail
+    ].join('\n');
+    await bot.sendMessage(CHAT_ID, report);
+    console.log(`✅ ${new Date().toISOString()} | Watcher restarted (PID ${newPid})`);
 });
 
 // Track watcher status to avoid spamming alerts
