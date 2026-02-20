@@ -454,7 +454,7 @@ Rules for the reply file:
 
                 # Save diagnosis output to file for auto-fix trigger
                 if [ "$IS_DIAGNOSIS" = true ] && [ -n "$AGENT_OUTPUT" ]; then
-                    echo "$AGENT_OUTPUT" > "$GEMINI_DIR/diagnosis_output.txt"
+                    echo "$AGENT_OUTPUT" > "$DOT_GEMINI/diagnosis_output.txt"
                     echo "📋 $(date +%H:%M:%S) | Diagnosis output saved to diagnosis_output.txt"
                 fi
 
