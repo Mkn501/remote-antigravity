@@ -326,9 +326,16 @@ sequenceDiagram
     CLI->>GIT: Modifies files on hotfix branch
     WD->>WD: npm test
     alt Tests pass
-        WD->>GIT: git checkout main && git merge hotfix/auto-*
-        WD->>BOT: pkill node.*bot.js && node bot.js &
-        WD->>TG: "✅ Auto-fix applied: <summary>. Bot restarted."
+        WD->>TG: "✅ Fix ready: <summary>. Apply?" [Apply] [Discard]
+        Note over TG: User reviews fix diff + test results
+        alt User taps Apply
+            BOT->>GIT: git checkout main && git merge hotfix/auto-*
+            BOT->>BOT: pkill node.*bot.js && node bot.js &
+            BOT->>TG: "✅ Fix deployed. Bot restarted."
+        else User taps Discard
+            BOT->>GIT: git branch -D hotfix/auto-*
+            BOT->>TG: "🗑️ Hotfix discarded."
+        end
     else Tests fail
         WD->>GIT: git checkout main (discard hotfix)
         WD->>TG: "❌ Auto-fix failed tests. Manual intervention needed."
@@ -341,7 +348,8 @@ sequenceDiagram
 2. **Test gate**: Fix is ONLY merged if `npm test` passes. No blind deploys.
 3. **Minimal patch**: The prompt instructs the LLM to make the smallest possible change. No refactoring.
 4. **Opt-in**: Auto-fix only runs if `state.json` has `"auto_fix_enabled": true`. Default is `false`.
-5. **Same chat ID**: Bot restarts with the same token + chat ID. No new chat needed.
+5. **Human approval**: Fix is never deployed automatically. User must tap "Apply" in Telegram after reviewing the fix summary and test results.
+6. **Same chat ID**: Bot restarts with the same token + chat ID. No new chat needed.
 6. **Rollback**: If the restarted bot crashes again, the watchdog detects it and the hotfix commit is identifiable by its branch name.
 
 #### Watchdog Trigger (pseudo-code)
@@ -371,11 +379,10 @@ if [ -f "$GEMINI_DIR/diagnosis_output.txt" ]; then
         # Test gate
         cd "$BOT_DIR" && npm test > "$GEMINI_DIR/autofix_test.log" 2>&1
         if [ $? -eq 0 ]; then
-            git checkout main && git merge "$HOTFIX_BRANCH" --no-edit
-            pkill -f "node.*bot.js" 2>/dev/null
-            cd "$BOT_DIR" && node bot.js >> "$GEMINI_DIR/bot.log" 2>&1 &
-            log "✅ Auto-fix merged + bot restarted (PID $!)"
-            write_to_outbox "✅ Auto-fix applied for $SEVERITY issue. Bot restarted."
+            # Don't auto-merge — ask for permission via Telegram
+            DIFF_SUMMARY=$(git diff main --stat | tail -3)
+            write_to_outbox "✅ Hotfix ready ($SEVERITY):\n$DIFF_SUMMARY\n\nTests: PASSED\nBranch: $HOTFIX_BRANCH\n\nReply /apply_fix to deploy or /discard_fix to discard."
+            log "✅ Hotfix ready — awaiting user approval"
         else
             git checkout main
             git branch -D "$HOTFIX_BRANCH" 2>/dev/null
@@ -387,18 +394,43 @@ if [ -f "$GEMINI_DIR/diagnosis_output.txt" ]; then
 fi
 ```
 
-#### `/autofix` Manual Command
+#### `/apply_fix` and `/discard_fix` Commands
 ```javascript
-bot.onText(/^\/autofix/, async (msg) => {
+// Apply the pending hotfix
+bot.onText(/^\/apply_fix/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
-    const state = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
-    state.auto_fix_enabled = !state.auto_fix_enabled;
-    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-    await bot.sendMessage(CHAT_ID,
-        state.auto_fix_enabled
-            ? '🔧 Auto-fix ENABLED — bot will attempt to self-repair on CRITICAL/HIGH crashes'
-            : '🔒 Auto-fix DISABLED — diagnosis only (read-only mode)'
-    );
+    try {
+        const branches = execSync('git branch', { encoding: 'utf8' });
+        const hotfix = branches.match(/hotfix\/auto-\d+/)?.[0]?.trim();
+        if (!hotfix) {
+            await bot.sendMessage(CHAT_ID, '❌ No pending hotfix found.');
+            return;
+        }
+        execSync(`git checkout main && git merge ${hotfix} --no-edit`);
+        execSync(`git branch -d ${hotfix}`);
+        // Restart bot
+        await bot.sendMessage(CHAT_ID, `✅ Hotfix ${hotfix} merged to main. Restarting...`);
+        process.exit(0); // Watchdog will restart us on main
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Apply failed: ${err.message}`);
+    }
+});
+
+// Discard the pending hotfix
+bot.onText(/^\/discard_fix/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        const branches = execSync('git branch', { encoding: 'utf8' });
+        const hotfix = branches.match(/hotfix\/auto-\d+/)?.[0]?.trim();
+        if (!hotfix) {
+            await bot.sendMessage(CHAT_ID, '❌ No pending hotfix found.');
+            return;
+        }
+        execSync(`git checkout main && git branch -D ${hotfix}`);
+        await bot.sendMessage(CHAT_ID, `🗑️ Hotfix ${hotfix} discarded.`);
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Discard failed: ${err.message}`);
+    }
 });
 ```
 
