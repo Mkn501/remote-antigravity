@@ -12,7 +12,7 @@ The system currently has no recovery mechanism when the watcher or bot crashes �
 
 1. **Phase 1: `/restart` Command** ✅ — Telegram command to restart the watcher, clear stale state, and report what went wrong. Works when the **bot is alive but the watcher is stuck**.
 2. **Phase 2: External Watchdog** ✅ — Independent process that monitors bot + watcher and auto-restarts on crash. Solves the **chicken-and-egg problem** — works even when the bot itself is down.
-3. **Phase 3: LLM Self-Diagnosis** — When the watchdog detects repeated crashes (≥2 in a row), it spawns Kilo CLI to read logs, diagnose the root cause, and report findings to Telegram. Optionally proposes a fix.
+3. **Phase 3: LLM Self-Diagnosis** — When the watchdog detects repeated crashes (≥2 in a row), it spawns the **active CLI backend** (Gemini or Kilo, from `state.json`) to read logs, diagnose the root cause, and report findings to Telegram. Optionally proposes a fix.
 
 ### Recovery Levels
 | Level | Mechanism | Requires | Solves |
@@ -181,7 +181,7 @@ fi
 
 ### 3.3 Phase 3: LLM Self-Diagnosis
 
-**Concept**: When the watchdog detects the same process has crashed ≥2 times within an hour, it spawns Kilo CLI in **read-only diagnosis mode** to analyze the last error logs and send a root cause report to Telegram via the outbox.
+**Concept**: When the watchdog detects the same process has crashed ≥2 times within an hour, it spawns the **active CLI backend** (Gemini CLI or Kilo CLI, read from `state.json`) in **read-only diagnosis mode** to analyze the last error logs and send a root cause report to Telegram via the outbox.
 
 #### Architecture
 ```mermaid
@@ -194,7 +194,12 @@ sequenceDiagram
     WD->>FS: Detect ≥2 restarts/hour
     WD->>FS: Write diagnosis prompt to .gemini/wa_inbox.json
     Note over WD: Prompt includes last 50 lines of watcher.log + bot.log
-    WD->>K: kilo run --auto --model <free-tier> "<diagnosis prompt>"
+    WD->>FS: Read state.json for active backend
+    alt Gemini backend
+        WD->>K: gemini -p "<diagnosis prompt>"
+    else Kilo backend
+        WD->>K: kilo run --auto --model <model> "<diagnosis prompt>"
+    end
     K->>FS: Reads watcher.sh, bot.js, logs
     K->>FS: Writes diagnosis to .gemini/wa_outbox.json
     FS->>TG: Bot polls outbox → sends report
@@ -239,12 +244,20 @@ $WATCHER_TAIL
 === BOT LOG (last 50 lines) ===
 $BOT_TAIL"
 
-    # Spawn Kilo CLI for diagnosis (fire-and-forget)
-    source "$SCRIPT_DIR/bot/.env" 2>/dev/null
-    [ -n "${KILO_API_KEY:-}" ] && export OPENROUTER_API_KEY="$KILO_API_KEY"
-    kilo run --auto --model "openrouter/z-ai/glm-5" "$PROMPT" \
-        >"$GEMINI_DIR/diagnosis_output.txt" 2>&1 &
-    log "✅ Diagnosis spawned (PID $!)"
+    # Spawn CLI for diagnosis (fire-and-forget, uses active backend)
+    BACKEND=$(python3 -c "import json; print(json.load(open('$GEMINI_DIR/state.json')).get('backend','gemini'))" 2>/dev/null || echo "gemini")
+    MODEL=$(python3 -c "import json; print(json.load(open('$GEMINI_DIR/state.json')).get('model',''))" 2>/dev/null || echo "")
+
+    if [ "$BACKEND" = "kilo" ]; then
+        source "$SCRIPT_DIR/bot/.env" 2>/dev/null
+        [ -n "${KILO_API_KEY:-}" ] && export OPENROUTER_API_KEY="$KILO_API_KEY"
+        kilo run --auto ${MODEL:+--model "$MODEL"} "$PROMPT" \
+            >"$GEMINI_DIR/diagnosis_output.txt" 2>&1 &
+    else
+        gemini -p "$PROMPT" \
+            >"$GEMINI_DIR/diagnosis_output.txt" 2>&1 &
+    fi
+    log "✅ Diagnosis spawned via $BACKEND (PID $!)"
 fi
 ```
 
@@ -278,7 +291,7 @@ bot.onText(/^\/diagnose/, async (msg) => {
 | Restart loop guard | N/A | ✅ Max 3/hour | ✅ Max 1 diagnosis/hour |
 | Lock cleanup | ✅ On restart | ✅ On restart | N/A |
 | Read-only mode | N/A | N/A | ✅ Prompt says DO NOT modify files |
-| Cost guard | N/A | N/A | ✅ Free-tier model only (GLM-5) |
+| Cost guard | N/A | N/A | ✅ Uses active backend (Gemini sub or free-tier Kilo) |
 | Dedup guard | N/A | N/A | ✅ `diagnosis_pending` flag file |
 
 > [!CAUTION]
@@ -328,7 +341,7 @@ No new dependencies. All standard macOS/Unix tools.
 - **Risk**: Diagnosis loop — keeps spawning LLM on every watchdog cycle
   - **Mitigation**: `diagnosis_pending` flag file prevents re-trigger until cleared
 - **Risk**: API cost from diagnosis calls
-  - **Mitigation**: Uses free-tier model (GLM-5) only; max 1 diagnosis per hour
+  - **Mitigation**: Uses active backend — Gemini subscription has no extra cost; Kilo uses configured model from `state.json`
 
 ## 8. Testing
 
@@ -401,7 +414,7 @@ No new dependencies. All standard macOS/Unix tools.
 ### Task 5: Add diagnosis trigger to watchdog
 - **File(s):** `scripts/watchdog.sh` (existing), `scripts/diagnose_prompt.txt` (NEW)
 - **Action:** After restart, check crash count ≥2; if so, build diagnosis prompt from log tails and spawn Kilo CLI. Create reusable prompt template.
-- **Signature:** Watchdog checks `CRASH_COUNT -ge 2` → sources .env → spawns `kilo run --auto --model "openrouter/z-ai/glm-5"` with diagnosis prompt
+- **Signature:** Watchdog checks `CRASH_COUNT -ge 2` → reads `state.json` for active backend → spawns `gemini -p` or `kilo run --auto` with diagnosis prompt
 - **Scope Boundary:** ONLY modify `watchdog.sh` and create `diagnose_prompt.txt`. Do NOT touch bot.js or watcher.sh.
 - **Dependencies:** Requires Tasks 3-4 (watchdog exists)
 - **Parallel:** No
