@@ -30,7 +30,7 @@ export function startHealthCheck(bot, ctx) {
             if (plan && (plan.status === 'pending_approval' || plan.status === 'pending_review')
                 && plan.tasks?.length && lastAutoTriggerPlanStatus !== plan.status) {
                 lastAutoTriggerPlanStatus = plan.status;
-                applyTierDefaults(plan);
+                applyTierDefaults(plan, getState);
                 plan.status = 'confirming';
                 saveExecutionPlan(plan, updateState);
 
