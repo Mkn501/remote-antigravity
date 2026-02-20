@@ -91,6 +91,23 @@
   - **File(s):** scripts/bot/bot.js, scripts/bot/bot.test.js
   - **Dependencies:** Requires watchdog script.
   - **Acceptance:** `npm test` passes; `/watchdog` shows status in Telegram.
+- [ ] [Feature] [Infra] Add LLM diagnosis trigger to watchdog [Ref: docs/specs/self_healing_spec.md] [Difficulty: 5]
+  - **Summary:** Watchdog detects ≥2 crashes/hour, spawns Kilo CLI to diagnose from logs, reports to Telegram.
+  - **File(s):** scripts/watchdog.sh (existing), scripts/diagnose_prompt.txt (NEW)
+  - **Action:** Add crash count check, build diagnosis prompt from log tails, spawn `kilo run --auto`.
+  - **Scope Boundary:** ONLY modify watchdog.sh and create diagnose_prompt.txt. Do NOT touch bot.js.
+  - **Acceptance:** `bash -n watchdog.sh` passes; diagnosis trigger logic present.
+- [ ] [Feature] [Bot] Add `/diagnose` manual trigger command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
+  - **Summary:** Telegram command to manually trigger LLM diagnosis from watcher + bot logs.
+  - **File(s):** scripts/bot/bot.js (new handler)
+  - **Action:** Add `/diagnose` handler: collects last 30 lines of logs, writes diagnosis prompt to inbox.
+  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh or watchdog.sh.
+  - **Acceptance:** `npm test` passes; `/diagnose` in Telegram triggers LLM analysis.
+- [ ] [Feature] [Testing] Add Phase 3 diagnosis regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2]
+  - **Summary:** Tests for /diagnose handler, BOT_COMMANDS, watchdog diagnosis trigger, dedup guard.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Dependencies:** Requires diagnosis trigger + /diagnose command.
+  - **Acceptance:** `npm test` passes with new tests.
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 - [ ] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]

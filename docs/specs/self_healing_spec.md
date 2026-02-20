@@ -8,10 +8,11 @@
 
 ## 1. Executive Summary
 
-The system currently has no recovery mechanism when the watcher or bot crashes — requiring manual SSH/local terminal intervention. This spec introduces two recovery levels:
+The system currently has no recovery mechanism when the watcher or bot crashes — requiring manual SSH/local terminal intervention. This spec introduces three recovery levels:
 
-1. **Phase 1: `/restart` Command** — Telegram command to restart the watcher, clear stale state, and report what went wrong. Works when the **bot is alive but the watcher is stuck**.
-2. **Phase 2: External Watchdog** — Independent process that monitors bot + watcher and auto-restarts on crash. Solves the **chicken-and-egg problem** — works even when the bot itself is down.
+1. **Phase 1: `/restart` Command** ✅ — Telegram command to restart the watcher, clear stale state, and report what went wrong. Works when the **bot is alive but the watcher is stuck**.
+2. **Phase 2: External Watchdog** ✅ — Independent process that monitors bot + watcher and auto-restarts on crash. Solves the **chicken-and-egg problem** — works even when the bot itself is down.
+3. **Phase 3: LLM Self-Diagnosis** — When the watchdog detects repeated crashes (≥2 in a row), it spawns Kilo CLI to read logs, diagnose the root cause, and report findings to Telegram. Optionally proposes a fix.
 
 ### Recovery Levels
 | Level | Mechanism | Requires | Solves |
@@ -25,10 +26,10 @@ The system currently has no recovery mechanism when the watcher or bot crashes �
 1. Enable watcher recovery from Telegram without local CLI access
 2. Eliminate manual intervention on crashes — auto-restart bot and watcher
 3. Provide diagnostic report on what went wrong
+4. **Phase 3**: Use LLM to diagnose repeated crashes from logs and report root cause
 
 ### Non-Goals
-- LLM self-diagnosis / auto-fix (future Phase 3)
-- Auto-deploying code fixes
+- Auto-deploying code fixes (LLM suggests, human approves)
 - Remote bot restart via Telegram (if bot is dead, it can't receive commands — that's what the watchdog solves)
 
 ## 3. Technical Design
@@ -178,18 +179,114 @@ fi
 </plist>
 ```
 
-### 3.3 Safety Guards
+### 3.3 Phase 3: LLM Self-Diagnosis
 
-| Guard | Phase 1 | Phase 2 |
-|---|---|---|
-| CHAT_ID auth | ✅ Required | N/A |
-| Restart loop guard | N/A | ✅ Max 3/hour |
-| Lock cleanup | ✅ On restart | ✅ On restart |
-| Process detection | `pkill -f` | `pgrep -f` |
+**Concept**: When the watchdog detects the same process has crashed ≥2 times within an hour, it spawns Kilo CLI in **read-only diagnosis mode** to analyze the last error logs and send a root cause report to Telegram via the outbox.
+
+#### Architecture
+```mermaid
+sequenceDiagram
+    participant WD as Watchdog (launchd)
+    participant FS as Filesystem
+    participant K as Kilo CLI
+    participant TG as Telegram
+
+    WD->>FS: Detect ≥2 restarts/hour
+    WD->>FS: Write diagnosis prompt to .gemini/wa_inbox.json
+    Note over WD: Prompt includes last 50 lines of watcher.log + bot.log
+    WD->>K: kilo run --auto --model <free-tier> "<diagnosis prompt>"
+    K->>FS: Reads watcher.sh, bot.js, logs
+    K->>FS: Writes diagnosis to .gemini/wa_outbox.json
+    FS->>TG: Bot polls outbox → sends report
+```
+
+#### Components
+- **scripts/watchdog.sh**: Diagnosis trigger (≥2 crashes) + prompt builder
+- **scripts/bot/bot.js**: `/diagnose` manual trigger command
+- **scripts/diagnose_prompt.txt**: Reusable diagnosis prompt template
+
+#### Watchdog Diagnosis Trigger
+```bash
+# In watchdog.sh — after restart, check if this is a repeated crash
+HOUR=$(date '+%Y-%m-%d-%H')
+CRASH_COUNT=$(grep -c "$HOUR" "$RESTART_TRACKER" 2>/dev/null || echo "0")
+
+if [ "$CRASH_COUNT" -ge 2 ] && ! [ -f "$GEMINI_DIR/diagnosis_pending" ]; then
+    log "🔍 Repeated crashes ($CRASH_COUNT) — triggering LLM diagnosis"
+    touch "$GEMINI_DIR/diagnosis_pending"
+
+    # Collect diagnostic context
+    WATCHER_TAIL=$(tail -50 "$GEMINI_DIR/watcher.log" 2>/dev/null || echo "(no log)")
+    BOT_TAIL=$(tail -50 "$GEMINI_DIR/bot.log" 2>/dev/null || echo "(no log)")
+
+    PROMPT=$(cat <<'DIAGNOSIS_EOF'
+You are a systems reliability engineer. The Antigravity bot/watcher system
+has crashed multiple times in the last hour. Analyze the logs below and:
+
+1. Identify the ROOT CAUSE of the crash
+2. Determine if it is a code bug, config issue, or external failure
+3. Suggest a specific fix (file + line if possible)
+4. Rate severity: CRITICAL / HIGH / MEDIUM / LOW
+
+Do NOT modify any files. Output your analysis as plain text.
+
+=== WATCHER LOG (last 50 lines) ===
+DIAGNOSIS_EOF
+)
+    PROMPT="$PROMPT
+$WATCHER_TAIL
+
+=== BOT LOG (last 50 lines) ===
+$BOT_TAIL"
+
+    # Spawn Kilo CLI for diagnosis (fire-and-forget)
+    source "$SCRIPT_DIR/bot/.env" 2>/dev/null
+    [ -n "${KILO_API_KEY:-}" ] && export OPENROUTER_API_KEY="$KILO_API_KEY"
+    kilo run --auto --model "openrouter/z-ai/glm-5" "$PROMPT" \
+        >"$GEMINI_DIR/diagnosis_output.txt" 2>&1 &
+    log "✅ Diagnosis spawned (PID $!)"
+fi
+```
+
+#### `/diagnose` Command (bot.js)
+```javascript
+bot.onText(/^\/diagnose/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+
+    // Collect last 30 lines of each log
+    let wLog = '(empty)', bLog = '(empty)';
+    try { wLog = execSync(`tail -30 "${WATCHER_LOG}"`, { encoding: 'utf8', timeout: 3000 }).trim(); } catch {}
+    try { bLog = execSync(`tail -30 "${CENTRAL_DIR}/bot.log"`, { encoding: 'utf8', timeout: 3000 }).trim(); } catch {}
+
+    const prompt = [
+        'You are a systems reliability engineer. Analyze these logs:',
+        '', '=== WATCHER LOG ===', wLog,
+        '', '=== BOT LOG ===', bLog,
+        '', 'Identify: 1) Root cause 2) Is it code/config/external 3) Suggested fix 4) Severity'
+    ].join('\n');
+
+    await bot.sendMessage(CHAT_ID, '🔍 Spawning diagnosis agent...');
+    writeToInbox(prompt);
+});
+```
+
+### 3.4 Safety Guards
+
+| Guard | Phase 1 | Phase 2 | Phase 3 |
+|---|---|---|---|
+| CHAT_ID auth | ✅ Required | N/A | ✅ Required (/diagnose) |
+| Restart loop guard | N/A | ✅ Max 3/hour | ✅ Max 1 diagnosis/hour |
+| Lock cleanup | ✅ On restart | ✅ On restart | N/A |
+| Read-only mode | N/A | N/A | ✅ Prompt says DO NOT modify files |
+| Cost guard | N/A | N/A | ✅ Free-tier model only (GLM-5) |
+| Dedup guard | N/A | N/A | ✅ `diagnosis_pending` flag file |
+
+> [!CAUTION]
+> Phase 3 LLM diagnosis is **read-only advisory**. The LLM does NOT modify files, commit code, or restart processes. It only produces a text report. Human must review and apply any suggested fix.
 
 ## 4. Spikes
 
-None — standard process management tools (pkill, pgrep, launchd).
+None — standard process management tools (pkill, pgrep, launchd). Kilo CLI already integrated.
 
 ## 5. Open Source & Commercialization Impact
 
@@ -197,19 +294,26 @@ No new dependencies. All standard macOS/Unix tools.
 
 ## 6. Implementation Phases
 
-### Phase 1: `/restart` Command (~30 min)
+### Phase 1: `/restart` Command (~30 min) ✅
 - Add `/restart` handler to bot.js
 - Kill watcher, clear lock, spawn new watcher
 - Read last 10 lines of watcher.log as diagnostics
 - Report to Telegram
 - Add regression tests
 
-### Phase 2: External Watchdog (~1 hour)
+### Phase 2: External Watchdog (~1 hour) ✅
 - Create `scripts/watchdog.sh`
 - Create launchd plist for macOS
 - Add restart loop guard (max 3/hour)
 - Add `/watchdog` status command to bot.js
 - Add regression tests
+
+### Phase 3: LLM Self-Diagnosis (~1.5 hours)
+- Add diagnosis trigger to `watchdog.sh` (≥2 crashes → spawn Kilo)
+- Create `scripts/diagnose_prompt.txt` template
+- Add `/diagnose` manual command to bot.js
+- Add regression tests
+- E2E test with mock crash scenario
 
 ## 7. Security & Risks
 
@@ -219,6 +323,12 @@ No new dependencies. All standard macOS/Unix tools.
   - **Mitigation**: Track restart count in `/tmp/ra-watchdog-restarts`; cap at 3 per hour; after limit, log error and stop
 - **Risk**: Race condition between `/restart` and watchdog both trying to restart
   - **Mitigation**: PID file check — both read the same PID before acting
+- **Risk**: LLM diagnosis modifies code or runs destructive commands
+  - **Mitigation**: Prompt explicitly says "DO NOT modify any files"; diagnosis runs via `kilo run --auto` which respects prompt constraints; output captured to file, not executed
+- **Risk**: Diagnosis loop — keeps spawning LLM on every watchdog cycle
+  - **Mitigation**: `diagnosis_pending` flag file prevents re-trigger until cleared
+- **Risk**: API cost from diagnosis calls
+  - **Mitigation**: Uses free-tier model (GLM-5) only; max 1 diagnosis per hour
 
 ## 8. Testing
 
@@ -228,14 +338,20 @@ No new dependencies. All standard macOS/Unix tools.
 |---|---|---|
 | `/restart` command | `bot.test.js` | handler exists, lock cleanup, watcher spawn |
 | Watchdog script | `bot.test.js` | script exists, checks bot+watcher, restart loop guard |
+| `/diagnose` command | `bot.test.js` | handler exists, in BOT_COMMANDS |
+| Diagnosis trigger | `bot.test.js` | watchdog has diagnosis logic, pending flag, prompt template |
 
 ### 8.2 Regression Suite
 
-- [ ] Existing 126 tests pass unchanged
-- [ ] `/restart` handler source pattern test
-- [ ] `/restart` in BOT_COMMANDS
-- [ ] Watchdog script syntax valid (`bash -n`)
-- [ ] Watchdog has restart loop guard
+- [x] Existing 126 tests pass unchanged
+- [x] `/restart` handler source pattern test
+- [x] `/restart` in BOT_COMMANDS
+- [x] Watchdog script syntax valid (`bash -n`)
+- [x] Watchdog has restart loop guard
+- [ ] `/diagnose` handler source pattern test
+- [ ] `/diagnose` in BOT_COMMANDS
+- [ ] Watchdog diagnosis trigger exists
+- [ ] Watchdog has `diagnosis_pending` dedup guard
 - Verification: `cd scripts/bot && npm test`
 
 ## 9. Work Orders
@@ -282,31 +398,71 @@ No new dependencies. All standard macOS/Unix tools.
 - **Tier:** ⚡ Mid
 - **Difficulty:** 3
 
+### Task 5: Add diagnosis trigger to watchdog
+- **File(s):** `scripts/watchdog.sh` (existing), `scripts/diagnose_prompt.txt` (NEW)
+- **Action:** After restart, check crash count ≥2; if so, build diagnosis prompt from log tails and spawn Kilo CLI. Create reusable prompt template.
+- **Signature:** Watchdog checks `CRASH_COUNT -ge 2` → sources .env → spawns `kilo run --auto --model "openrouter/z-ai/glm-5"` with diagnosis prompt
+- **Scope Boundary:** ONLY modify `watchdog.sh` and create `diagnose_prompt.txt`. Do NOT touch bot.js or watcher.sh.
+- **Dependencies:** Requires Tasks 3-4 (watchdog exists)
+- **Parallel:** No
+- **Acceptance:** `bash -n watchdog.sh` passes; diagnosis trigger logic present in source
+- **Tier:** 🧠 Top
+- **Difficulty:** 5
+
+### Task 6: Add `/diagnose` command to bot.js
+- **File(s):** `scripts/bot/bot.js` (new handler)
+- **Action:** Add `/diagnose` command that collects last 30 lines of watcher.log + bot.log and sends as a diagnosis prompt to the inbox for Kilo CLI to process.
+- **Signature:** `bot.onText(/^\/diagnose/, async (msg) => ...)` → reads logs, writes prompt to inbox
+- **Scope Boundary:** ONLY modify `bot.js`. Do NOT touch `watcher.sh` or `watchdog.sh`.
+- **Dependencies:** None (independent of watchdog diagnosis)
+- **Parallel:** Yes
+- **Acceptance:** `npm test` passes; `/diagnose` in Telegram triggers LLM analysis
+- **Tier:** ⚡ Mid
+- **Difficulty:** 3
+
+### Task 7: Add Phase 3 regression tests
+- **File(s):** `scripts/bot/bot.test.js`
+- **Action:** Add tests: `/diagnose` handler exists, `/diagnose` in BOT_COMMANDS, watchdog has diagnosis trigger, watchdog has `diagnosis_pending` dedup guard
+- **Scope Boundary:** ONLY modify `bot.test.js`.
+- **Dependencies:** Requires Tasks 5 + 6
+- **Parallel:** No
+- **Acceptance:** `npm test` passes with new tests
+- **Tier:** ⚡ Mid
+- **Difficulty:** 2
+
 ## 10. Dependency Graph
 
 ```
-Task 1 (/restart cmd) ──→ Task 2 (tests)       [Phase 1]
+Task 1 (/restart cmd) ──→ Task 2 (tests)       [Phase 1] ✅ DONE
 
-Task 3 (watchdog.sh)  ──→ Task 4 (/watchdog)   [Phase 2, independent]
+Task 3 (watchdog.sh)  ──→ Task 4 (/watchdog)   [Phase 2] ✅ DONE
+                       ↘
+                         Task 5 (diagnosis trigger) ──→ Task 7 (tests)
+
+Task 6 (/diagnose cmd) ──→ Task 7 (tests)      [Phase 3, independent]
 ```
 
 ## 11. Execution Plan Summary
 
-| # | Task | Summary | Diff | Tier | ∥? | Deps |
-|---|---|---|---|---|---|---|
-| 1 | `/restart` command | Kill watcher + restart + report | 3/10 ⭐⭐ | ⚡ Mid | ✅ | — |
-| 2 | `/restart` tests | Regression tests | 2/10 ⭐ | ⚡ Mid | ❌ | 1 |
-| 3 | External watchdog | watchdog.sh + launchd plist | 4/10 ⭐⭐ | ⚡ Mid | ✅ | — |
-| 4 | `/watchdog` command + tests | Status command + tests | 3/10 ⭐⭐ | ⚡ Mid | ❌ | 3 |
+| # | Task | Summary | Diff | Tier | ∥? | Deps | Status |
+|---|---|---|---|---|---|---|---|
+| 1 | `/restart` command | Kill watcher + restart + report | 3/10 ⭐⭐ | ⚡ Mid | ✅ | — | ✅ Done |
+| 2 | `/restart` tests | Regression tests | 2/10 ⭐ | ⚡ Mid | ❌ | 1 | ✅ Done |
+| 3 | External watchdog | watchdog.sh + launchd plist | 4/10 ⭐⭐ | ⚡ Mid | ✅ | — | ✅ Done |
+| 4 | `/watchdog` command + tests | Status command + tests | 3/10 ⭐⭐ | ⚡ Mid | ❌ | 3 | ✅ Done |
+| 5 | Diagnosis trigger | Watchdog spawns Kilo on ≥2 crashes | 5/10 🔥 | 🧠 Top | ❌ | 3,4 | To Do |
+| 6 | `/diagnose` command | Manual Telegram trigger | 3/10 ⭐⭐ | ⚡ Mid | ✅ | — | To Do |
+| 7 | Phase 3 tests | Regression tests | 2/10 ⭐ | ⚡ Mid | ❌ | 5,6 | To Do |
 
-**Overall Score**: 3.0/10 + 1 (new pattern) = **4.0/10 (Moderate)**
+**Overall Score**: 3.3/10 + 1 (new pattern) = **4.3/10 (Moderate)**
 
 ## 12. Parallelism Notes
 
-- **Two independent tracks**:
-  - Track A: Tasks 1→2 (`/restart` command) — **start here** (quickest win)
-  - Track B: Tasks 3→4 (external watchdog)
-- Recommended order: **Track A first** (~30 min, highest immediate value)
+- **Three tracks** (Phases 1-2 done, Phase 3 remaining):
+  - ~~Track A: Tasks 1→2 (`/restart` command)~~ ✅
+  - ~~Track B: Tasks 3→4 (external watchdog)~~ ✅
+  - **Track C: Tasks 5+6→7 (LLM diagnosis)** — Task 6 is independent, can start in parallel with Task 5
+- Recommended order: **Task 6 first** (quickest, self-contained in bot.js)
 
 ---
 > **Template Version**: 2.0
