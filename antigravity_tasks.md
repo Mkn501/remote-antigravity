@@ -1,3 +1,9 @@
+<!-- TASK_SCHEMA:
+  Category: [Bug], [Feature], [Infra], [Research], [Docs], [Security], [Release], [UX], [Architecture]
+  Topic: Optional sub-area (e.g., [Hooks], [Bot], [WhatsApp])
+  Difficulty: 1 (Trivial) to 10 (Expert/Arch Change)
+  Jules: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
+-->
 # Tasks - Antigravity Tasks
 
 ## In Progress
@@ -9,28 +15,99 @@
 - [ ] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4]
 - [ ] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4]
 - [ ] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2]
-- [ ] **Category**: [Bug], [Feature], [Infra], [Research], [Docs], [Security], [Release], [UX], [Architecture]
-- [ ] **Topic**: Optional sub-area (e.g., [Hooks], [Bot], [WhatsApp])
-- [ ] **Difficulty**: 1 (Trivial) to 10 (Expert/Arch Change)
-- [ ] **Jules**: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
-- [ ] ->
-- [x] [Feature] [Bot] Add uptime tracking to `/version` command [Ref: docs/specs/version_command_spec.md] [Difficulty: 1] - IMPLEMENTED 2026-02-19
-  - **Summary:** Adds uptime display to existing /version command (e.g., "Uptime: 2h 34m").
-  - **File(s):** scripts/bot/bot.js
-  - **Action:** ✅ DONE — `BOT_START_TIME` at line 54, `formatUptime()` lines 56-66, `/version` handler lines 197-218
-  - **Scope Boundary:** ONLY modify bot.js.
-  - **Dependencies:** None
-  - **Parallel:** Yes
-  - **Acceptance:** `/version` shows "Uptime: Xm" or "Uptime: Xh Ym".
-  - **Tier:** 🆓 Free
-- [ ] [Feature] [Bot] Update test to assert uptime in /version [Difficulty: 1]
-  - **Summary:** Test at line 587 needs to assert `⏱️ Uptime:` is present.
-  - **File(s):** scripts/bot/bot.test.js (lines 593-598, 606-610)
-  - **Action:** Add uptime line to versionLines array + add assertion for uptime.
-  - **Dependencies:** None
-  - **Parallel:** Yes
-  - **Acceptance:** `npm test` passes with uptime assertion.
-  - **Tier:** 🆓 Free
+
+- [ ] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
+- [ ] **Summary:** Adds a command to display the current bot version and process uptime.
+- [ ] **File(s):** scripts/bot/bot.js
+- [ ] **Action:** Add `bot.onText(/\/version/, ...)` handler.
+- [ ] **Signature:** `(msg) => Promise<void>`
+- [ ] **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
+- [ ] **Dependencies:** None
+- [ ] **Parallel:** Yes
+- [ ] **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
+- [ ] **Tier:** ⚡ Mid
+- [ ] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
+- [ ] **Summary:** Ensures the /version command returns the expected format and doesn't crash.
+- [ ] **File(s):** scripts/bot/bot.test.js
+- [ ] **Action:** Add a test case that mocks the message and asserts the response.
+- [ ] **Signature:** `await test('/version command returns version and uptime', ...)`
+- [ ] **Scope Boundary:** ONLY modify bot.test.js.
+- [ ] **Dependencies:** None
+- [ ] **Parallel:** Yes
+- [ ] **Acceptance:** `npm test` passes.
+- [ ] **Tier:** ⚡ Mid
+- [ ] [Feature] [Bot] Add dispatch mode field and Auto-Run button [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
+  - **Summary:** Adds `mode` field to dispatch JSON and "🚀 Auto-Run" button in plan review.
+  - **File(s):** scripts/bot/bot.js (lines ~525-540, ep_execute handler)
+  - **Action:** Add `mode` parameter to `writeDispatch()` call; add auto-run button.
+  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
+  - **Acceptance:** `npm test` passes; dispatch JSON has `mode` field.
+- [ ] [Feature] [Watcher] Implement auto-continue dispatch mode [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 3]
+  - **Summary:** Skip step-through pause when dispatch mode is `auto`.
+  - **File(s):** scripts/watcher.sh (lines ~787-810, continue-wait section)
+  - **Action:** Read `.mode` from dispatch JSON; if `auto`, skip `wa_dispatch_continue.json` wait.
+  - **Scope Boundary:** ONLY modify watcher.sh. Do NOT touch bot.js.
+  - **Dependencies:** Requires dispatch mode field (Task above).
+  - **Acceptance:** `bash -n watcher.sh` passes.
+- [ ] [Feature] [Testing] Add auto-continue regression tests [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
+  - **Summary:** Behavioral tests for dispatch mode field and auto-continue logic.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Action:** Add tests verifying mode field and watcher auto-continue behavior.
+  - **Scope Boundary:** ONLY modify bot.test.js.
+  - **Dependencies:** Requires auto-continue implementation.
+  - **Acceptance:** `npm test` passes with new tests.
+- [ ] [Feature] [Watcher] Implement parallel dispatch with git worktrees [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 7]
+  - **Summary:** Run independent Kilo tasks in parallel worktrees, merge results.
+  - **File(s):** scripts/watcher.sh (new `dispatch_parallel()` function)
+  - **Action:** Add parallel dispatch function with worktree create/run/merge/cleanup.
+  - **Scope Boundary:** ONLY modify watcher.sh. Do NOT touch bot.js.
+  - **Dependencies:** Requires auto-continue mode.
+  - **Acceptance:** `bash -n watcher.sh` passes; E2E test passes.
+- [ ] [Feature] [Testing] Add parallel dispatch E2E + regression tests [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 4]
+  - **Summary:** Worktree lifecycle, parallel merge, and conflict detection tests.
+  - **File(s):** scripts/bot/bot.test.js, scripts/bot/test_kilo_e2e.sh
+  - **Action:** Add worktree lifecycle test, parallel merge test, conflict detection test.
+  - **Dependencies:** Requires parallel dispatch implementation.
+  - **Acceptance:** `npm test` passes; `bash test_kilo_e2e.sh` passes.
+- [x] [Feature] [Bot] Implement `/restart` command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
+  - **Summary:** Telegram command to kill watcher, clear stale lock, spawn new watcher, report diagnostics.
+  - **File(s):** scripts/bot/bot.js (new handler)
+  - **Action:** Add `/restart` handler with watcher kill, lock cleanup, log tail, watcher spawn.
+  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
+  - **Acceptance:** `npm test` passes; `/restart` in Telegram restarts watcher.
+- [x] [Feature] [Testing] Add `/restart` regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2]
+  - **Summary:** Tests for restart handler, lock cleanup, BOT_COMMANDS update.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Dependencies:** Requires `/restart` command.
+  - **Acceptance:** `npm test` passes with new tests.
+- [x] [Feature] [Infra] Create external watchdog script + launchd plist [Ref: docs/specs/self_healing_spec.md] [Difficulty: 4]
+  - **Summary:** Independent process that monitors bot + watcher PIDs, auto-restarts on crash.
+  - **File(s):** scripts/watchdog.sh (NEW), com.antigravity.watchdog.plist (NEW)
+  - **Action:** Create health check script with restart loop guard (max 3/hour). Create launchd plist.
+  - **Scope Boundary:** ONLY create new files. Do NOT modify existing scripts.
+  - **Acceptance:** `bash -n watchdog.sh` passes.
+- [x] [Feature] [Bot] Add `/watchdog` status command + tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
+  - **Summary:** Shows watchdog status (last restart, restart count, uptime) in Telegram.
+  - **File(s):** scripts/bot/bot.js, scripts/bot/bot.test.js
+  - **Dependencies:** Requires watchdog script.
+  - **Acceptance:** `npm test` passes; `/watchdog` shows status in Telegram.
+- [x] [Feature] [Infra] Add LLM diagnosis trigger to watchdog [Ref: docs/specs/self_healing_spec.md] [Difficulty: 5]
+  - **Summary:** Watchdog detects ≥2 crashes/hour, spawns Kilo CLI to diagnose from logs, reports to Telegram.
+  - **File(s):** scripts/watchdog.sh (existing), scripts/diagnose_prompt.txt (NEW)
+  - **Action:** Add crash count check, build diagnosis prompt from log tails, spawn `kilo run --auto`.
+  - **Scope Boundary:** ONLY modify watchdog.sh and create diagnose_prompt.txt. Do NOT touch bot.js.
+  - **Acceptance:** `bash -n watchdog.sh` passes; diagnosis trigger logic present.
+- [x] [Feature] [Bot] Add `/diagnose` manual trigger command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
+  - **Summary:** Telegram command to manually trigger LLM diagnosis from watcher + bot logs.
+  - **File(s):** scripts/bot/bot.js (new handler)
+  - **Action:** Add `/diagnose` handler: collects last 30 lines of logs, writes diagnosis prompt to inbox.
+  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh or watchdog.sh.
+  - **Acceptance:** `npm test` passes; `/diagnose` in Telegram triggers LLM analysis.
+- [x] [Feature] [Testing] Add Phase 3 diagnosis regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2]
+  - **Summary:** Tests for /diagnose handler, BOT_COMMANDS, watchdog diagnosis trigger, dedup guard.
+  - **File(s):** scripts/bot/bot.test.js
+  - **Dependencies:** Requires diagnosis trigger + /diagnose command.
+  - **Acceptance:** `npm test` passes with new tests.
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 - [ ] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]

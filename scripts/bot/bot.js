@@ -21,7 +21,8 @@
 
 import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
-import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, statSync, unlinkSync, createReadStream } from 'fs';
+import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, statSync, unlinkSync, createReadStream, openSync } from 'fs';
+import { spawn } from 'child_process';
 import { resolve, dirname, isAbsolute, join } from 'path';
 import { tmpdir } from 'os';
 import { execSync } from 'child_process';
@@ -190,6 +191,9 @@ bot.onText(/^\/help/, async (msg) => {
         '/model — Switch AI model',
         '/backend — Switch CLI backend (Gemini/Kilo)',
         '/clear_lock — Clear stuck session lock',
+        '/restart — Kill + restart watcher with diagnostics',
+        '/watchdog — Watchdog status (restart history)',
+        '/diagnose — Trigger LLM crash diagnosis from logs',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help);
 });
@@ -871,7 +875,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart', '/watchdog', '/diagnose'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
@@ -909,6 +913,138 @@ bot.onText(/^\/clear_lock/, async (msg) => {
         await bot.sendMessage(CHAT_ID, 'ℹ️ No lock file found.');
     }
 });
+
+// --- /restart Command: Kill watcher, clear state, restart, report ---
+const WATCHER_PATH = resolve(SCRIPT_DIR, '..', 'watcher.sh');
+const WATCHER_LOG = resolve(CENTRAL_DIR, 'watcher.log');
+
+bot.onText(/^\/restart/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    await bot.sendMessage(CHAT_ID, '🔄 Restarting watcher...');
+    console.log(`🔄 ${new Date().toISOString()} | /restart invoked`);
+
+    // 1. Kill existing watcher
+    let oldPid = 'unknown';
+    try {
+        oldPid = execSync('pgrep -f "watcher.sh"', { encoding: 'utf8', timeout: 3000 }).trim();
+        execSync('pkill -f "watcher.sh"', { timeout: 3000 });
+    } catch { /* no watcher running */ }
+
+    // 2. Clear stale state
+    const continueFile = resolve(CENTRAL_DIR, 'wa_dispatch_continue.json');
+    [LOCK_FILE, continueFile].forEach(f => {
+        try { if (existsSync(f)) unlinkSync(f); } catch { /* ignore */ }
+    });
+
+    // 3. Read last error from watcher log
+    let logTail = '(no log available)';
+    try {
+        logTail = execSync(
+            `tail -10 "${WATCHER_LOG}"`,
+            { encoding: 'utf8', timeout: 3000 }
+        ).trim();
+    } catch { /* log file may not exist */ }
+
+    // 4. Spawn new watcher
+    let newPid = 'failed';
+    try {
+        const logFd = openSync(WATCHER_LOG, 'a');
+        const watcher = spawn('bash', [WATCHER_PATH], {
+            detached: true,
+            stdio: ['ignore', logFd, logFd]
+        });
+        watcher.unref();
+        newPid = watcher.pid;
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Failed to start watcher: ${err.message}`);
+        return;
+    }
+
+    // 5. Report
+    const report = [
+        `✅ Watcher restarted`,
+        `   Old PID: ${oldPid || 'not running'}`,
+        `   New PID: ${newPid}`,
+        `🧹 Lock + continue signal cleared`,
+        '',
+        `📋 Last watcher log:`,
+        logTail
+    ].join('\n');
+    await bot.sendMessage(CHAT_ID, report);
+    console.log(`✅ ${new Date().toISOString()} | Watcher restarted (PID ${newPid})`);
+});
+
+// --- /watchdog Command: Show watchdog status and restart history ---
+const WATCHDOG_LOG = resolve(CENTRAL_DIR, 'watchdog.log');
+const RESTART_TRACKER = '/tmp/ra-watchdog-restarts';
+
+bot.onText(/^\/watchdog/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+
+    const botAlive = true; // If we're responding, bot is alive
+    const watcherAlive = isWatcherRunning();
+
+    // Read restart count this hour
+    let restartCount = 0;
+    try {
+        const hour = new Date().toISOString().slice(0, 13).replace('T', '-');
+        const tracker = readFileSync(RESTART_TRACKER, 'utf8');
+        restartCount = (tracker.match(new RegExp(hour.slice(0, 10), 'g')) || []).length;
+    } catch { /* no tracker file */ }
+
+    // Read last restart from watchdog log
+    let lastRestart = 'never';
+    try {
+        const log = execSync(`grep -E "restarting|started" "${WATCHDOG_LOG}" | tail -1`,
+            { encoding: 'utf8', timeout: 3000 }).trim();
+        if (log) lastRestart = log.substring(0, 19); // timestamp
+    } catch { /* no log */ }
+
+    const status = [
+        '🐕 Watchdog Status',
+        '',
+        `🤖 Bot: ${botAlive ? '✅ running' : '❌ down'}`,
+        `👁️ Watcher: ${watcherAlive ? '✅ running' : '❌ down'}`,
+        `🔄 Restarts today: ${restartCount}`,
+        `📋 Last restart: ${lastRestart}`,
+        '',
+        `📂 Log: .gemini/watchdog.log`
+    ].join('\n');
+    await bot.sendMessage(CHAT_ID, status);
+});
+
+// --- /diagnose Command: Manual LLM crash diagnosis ---
+bot.onText(/^\/diagnose/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+
+    // Collect last 30 lines of each log
+    let wLog = '(empty)', bLog = '(empty)';
+    try { wLog = execSync(`tail -30 "${WATCHER_LOG}"`, { encoding: 'utf8', timeout: 3000 }).trim(); } catch { }
+    try { bLog = execSync(`tail -30 "${CENTRAL_DIR}/bot.log"`, { encoding: 'utf8', timeout: 3000 }).trim(); } catch { }
+
+    const prompt = [
+        'You are a systems reliability engineer. The Antigravity bot/watcher system',
+        'may be experiencing issues. Analyze the logs below and:',
+        '',
+        '1. Identify the ROOT CAUSE of any errors or crashes',
+        '2. Determine if it is a code bug, config issue, or external failure',
+        '3. Suggest a specific fix (file + line if possible)',
+        '4. Rate severity: CRITICAL / HIGH / MEDIUM / LOW',
+        '',
+        'Do NOT modify any files. Output your analysis as plain text.',
+        '',
+        '=== WATCHER LOG (last 30 lines) ===',
+        wLog,
+        '',
+        '=== BOT LOG (last 30 lines) ===',
+        bLog
+    ].join('\n');
+
+    await bot.sendMessage(CHAT_ID, '\uD83D\uDD0D Spawning diagnosis agent...');
+    writeToInbox(prompt);
+    console.log(`\uD83D\uDD0D ${new Date().toISOString()} | /diagnose triggered`);
+});
+
 
 // Track watcher status to avoid spamming alerts
 let watcherWasAlive = true;

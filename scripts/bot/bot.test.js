@@ -2184,6 +2184,112 @@ await test('behavioral: auto-load defaults to gemini when backend not set', () =
     rmSync(mockDir, { recursive: true, force: true });
 });
 
+
+// ============================================================================
+// 19. Self-Healing: /restart Command
+// ============================================================================
+
+await test('self-healing: /restart handler exists in bot.js', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes("bot.onText(/^\\/restart/"), 'should have /restart handler');
+});
+
+await test('self-healing: /restart clears lock file', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    // Handler should reference LOCK_FILE for cleanup
+    const restartBlock = src.substring(src.indexOf('/restart'));
+    ok(restartBlock.includes('LOCK_FILE'), '/restart should reference LOCK_FILE for cleanup');
+});
+
+await test('self-healing: /restart clears dispatch continue signal', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const restartBlock = src.substring(src.indexOf('/restart'));
+    ok(restartBlock.includes('wa_dispatch_continue'), '/restart should clean up continue signal');
+});
+
+await test('self-healing: /restart is in BOT_COMMANDS', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const commandsMatch = src.match(/BOT_COMMANDS\s*=\s*\[(.*?)\]/s);
+    ok(commandsMatch, 'BOT_COMMANDS array should exist');
+    ok(commandsMatch[1].includes('/restart'), '/restart should be in BOT_COMMANDS');
+});
+
+await test('self-healing: /restart listed in /help output', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const helpBlock = src.substring(src.indexOf('/help/'), src.indexOf("].join('\\n')"));
+    ok(src.includes('/restart'), '/restart should be in /help text');
+});
+
+// ============================================================================
+// 20. Self-Healing: External Watchdog
+// ============================================================================
+
+await test('self-healing: watchdog.sh exists', () => {
+    const watchdogPath = resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh');
+    ok(existsSync(watchdogPath), 'scripts/watchdog.sh should exist');
+});
+
+await test('self-healing: watchdog.sh has valid syntax', () => {
+    const watchdogPath = resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh');
+    const result = execSync(`bash -n "${watchdogPath}" 2>&1`, { encoding: 'utf8' });
+    ok(true, 'watchdog.sh syntax is valid');
+});
+
+await test('self-healing: watchdog.sh has restart loop guard', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh'), 'utf8');
+    ok(src.includes('RESTART_COUNT'), 'should track restart count');
+    ok(src.includes('-ge 3'), 'should have max 3 restarts limit');
+});
+
+await test('self-healing: /watchdog handler exists in bot.js', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes('bot.onText(/^\\/watchdog/'), 'should have /watchdog handler');
+});
+
+await test('self-healing: /watchdog is in BOT_COMMANDS', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const commandsMatch = src.match(/BOT_COMMANDS\s*=\s*\[(.*?)\]/s);
+    ok(commandsMatch, 'BOT_COMMANDS array should exist');
+    ok(commandsMatch[1].includes('/watchdog'), '/watchdog should be in BOT_COMMANDS');
+});
+
+// ============================================================================
+// 21. Self-Healing: LLM Diagnosis (Phase 3)
+// ============================================================================
+
+await test('self-healing: /diagnose handler exists in bot.js', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes('bot.onText(/^\\/diagnose/'), 'should have /diagnose handler');
+});
+
+await test('self-healing: /diagnose is in BOT_COMMANDS', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const commandsMatch = src.match(/BOT_COMMANDS\s*=\s*\[(.*?)\]/s);
+    ok(commandsMatch, 'BOT_COMMANDS array should exist');
+    ok(commandsMatch[1].includes('/diagnose'), '/diagnose should be in BOT_COMMANDS');
+});
+
+await test('self-healing: watchdog has diagnosis trigger', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh'), 'utf8');
+    ok(src.includes('CRASH_COUNT'), 'should track crash count');
+    ok(src.includes('-ge 2'), 'should trigger on ≥2 crashes');
+    ok(src.includes('diagnosis'), 'should have diagnosis logic');
+});
+
+await test('self-healing: watchdog has diagnosis_pending dedup guard', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh'), 'utf8');
+    ok(src.includes('diagnosis_pending'), 'should use diagnosis_pending flag');
+    ok(src.includes('touch'), 'should create flag file to prevent re-trigger');
+});
+
+await test('self-healing: diagnose_prompt.txt template exists', () => {
+    const promptPath = resolve(PROJECT_ROOT, 'scripts', 'diagnose_prompt.txt');
+    ok(existsSync(promptPath), 'scripts/diagnose_prompt.txt should exist');
+    const content = readFileSync(promptPath, 'utf8');
+    ok(content.includes('ROOT CAUSE'), 'prompt should ask for root cause');
+    ok(content.includes('Do NOT modify'), 'prompt should enforce read-only');
+});
+
 // ============================================================================
 // SUMMARY
 // ============================================================================

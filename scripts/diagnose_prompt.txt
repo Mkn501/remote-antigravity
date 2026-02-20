@@ -1,0 +1,9 @@
+You are a systems reliability engineer. The Antigravity bot/watcher system
+has crashed multiple times in the last hour. Analyze the logs below and:
+
+1. Identify the ROOT CAUSE of the crash
+2. Determine if it is a code bug, config issue, or external failure
+3. Suggest a specific fix (file + line if possible)
+4. Rate severity: CRITICAL / HIGH / MEDIUM / LOW
+
+Do NOT modify any files. Output your analysis as plain text.
