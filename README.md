@@ -99,10 +99,15 @@ cd ../..
 |---------|-------------|
 | `/help` | Show all commands |
 | `/model` | Switch AI model (inline buttons) |
+| `/backend` | Switch CLI backend (Gemini/Kilo) |
 | `/project` | Switch active project (inline buttons) |
 | `/status` | System status |
+| `/version` | Bot version + uptime |
 | `/sprint` | Sprint mode (autonomous) |
 | `/stop` | Halt agent |
+| `/restart` | Kill + restart watcher with diagnostics |
+| `/watchdog` | Show watchdog status + restart history |
+| `/clear_lock` | Clear stuck session lock |
 | `/list` | List registered projects |
 | `/add <name> <path>` | Register a new project |
 
@@ -115,6 +120,38 @@ cd ../..
 - `scripts/bot/` — Telegram relay bot
 - `scripts/watcher.sh` — Inbox watcher + Gemini CLI launcher
 - `antigravity_tasks.md` — Task tracker (CLI-compatible)
+
+## 🛡️ Self-Healing
+
+Two recovery mechanisms protect against stuck or crashed processes:
+
+### `/restart` Command (Telegram)
+If the watcher is stuck but the bot is alive, send `/restart` from Telegram:
+- Kills the watcher process
+- Clears stale lock + dispatch continue signal
+- Spawns a new watcher
+- Shows last 10 lines of watcher.log as diagnostics
+
+### Watchdog (External Process)
+An independent script that runs every 60 seconds and auto-restarts bot or watcher if they crash.
+
+```bash
+# Install (one-time)
+cp com.antigravity.watchdog.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.antigravity.watchdog.plist
+
+# Check if running
+launchctl list | grep antigravity
+
+# Stop (keeps installed, stops running)
+launchctl unload ~/Library/LaunchAgents/com.antigravity.watchdog.plist
+
+# Uninstall completely
+launchctl unload ~/Library/LaunchAgents/com.antigravity.watchdog.plist
+rm ~/Library/LaunchAgents/com.antigravity.watchdog.plist
+```
+
+**Safety:** Max 3 restarts per hour to prevent crash loops. Logs at `.gemini/watchdog.log`.
 
 ## 🔒 Security
 
