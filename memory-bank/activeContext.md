@@ -1,11 +1,12 @@
 # Active Context
 
 ## Next Session Goal
-- [ ] Execute P0 quick fixes from `bot_refactoring_spec.md`: remove duplicate `/kill`, fix broad `pkill`, fix undefined `PROJECT_DIR`
+- [ ] Review current status and plan next steps.
 
 ## Current Focus
 - [x] **Session 2026-02-20 (PM)**: Merge & Code Review.
-- **Status**: Merged telegram/active, deleted destructive session branch, wrote critical review specs for bot.js and bot.test.js.
+- [x] **Session 2026-02-20 (Shutdown)**: Executed shutdown workflow for session preservation.
+- **Status**: Shutdown workflow completed.
 
 ## Open Work Items
 - P0: Duplicate `/kill` handler, broad `pkill`, undefined `PROJECT_DIR` (bot_refactoring_spec.md)

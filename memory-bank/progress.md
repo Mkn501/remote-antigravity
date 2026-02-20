@@ -22,6 +22,7 @@
 - [x] **M14: E2E Fixes & Plan Mode** — Dispatch loop verified, auto-clear plan mode, Next Task button fix, 99-test regression suite
 - [x] **M15: Builder-Ready Planning (Phase 1)** — Work order format, execution guards, approval gate, spec template v2.0, real-feature validation
 - [x] **M16: Self-Healing & Code Review** — /restart, watchdog, /diagnose, /autofix (Phases 1-4), diagnosis pipeline, critical review specs for bot.js + bot.test.js. 151-test regression suite.
+- [x] **M17: Shutdown Workflow Execution** — Successfully ran the shutdown workflow for session preservation.
 
 ## Known Risks
 - `--yolo` mode auto-approves all Gemini tool calls — accepted for single-user personal use.
