@@ -2291,6 +2291,44 @@ await test('self-healing: diagnose_prompt.txt template exists', () => {
 });
 
 // ============================================================================
+// 22. Self-Healing: Auto-Fix & Hot-Deploy (Phase 4)
+// ============================================================================
+
+await test('self-healing: /autofix handler exists in bot.js', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes('bot.onText(/^\\/autofix/'), 'should have /autofix handler');
+});
+
+await test('self-healing: /apply_fix and /discard_fix handlers exist in bot.js', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes('bot.onText(/^\\/apply_fix/'), 'should have /apply_fix handler');
+    ok(src.includes('bot.onText(/^\\/discard_fix/'), 'should have /discard_fix handler');
+});
+
+await test('self-healing: /autofix, /apply_fix, /discard_fix in BOT_COMMANDS', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const commandsMatch = src.match(/BOT_COMMANDS\s*=\s*\[(.*?)\]/s);
+    ok(commandsMatch, 'BOT_COMMANDS array should exist');
+    ok(commandsMatch[1].includes('/autofix'), '/autofix should be in BOT_COMMANDS');
+    ok(commandsMatch[1].includes('/apply_fix'), '/apply_fix should be in BOT_COMMANDS');
+    ok(commandsMatch[1].includes('/discard_fix'), '/discard_fix should be in BOT_COMMANDS');
+});
+
+await test('self-healing: watchdog has auto-fix trigger', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh'), 'utf8');
+    ok(src.includes('auto_fix_enabled'), 'should check auto_fix_enabled flag');
+    ok(src.includes('HOTFIX_BRANCH'), 'should create hotfix branch');
+    ok(src.includes('npm test'), 'should run test gate before asking approval');
+});
+
+await test('self-healing: watchdog hotfix branches from main', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh'), 'utf8');
+    ok(src.includes('hotfix/auto-'), 'should use hotfix/auto- branch naming');
+    ok(src.includes('checkout -b'), 'should checkout new branch');
+    ok(src.includes('apply_fix'), 'should tell user to send /apply_fix');
+});
+
+// ============================================================================
 // SUMMARY
 // ============================================================================
 

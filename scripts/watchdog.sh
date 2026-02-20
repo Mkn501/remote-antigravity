@@ -121,3 +121,66 @@ $BOT_TAIL"
     log "✅ Diagnosis spawned via $BACKEND (PID $!)"
 fi
 
+
+# --- Phase 4: Auto-Fix & Hot-Deploy ---
+# If auto_fix_enabled + diagnosis found CRITICAL/HIGH + diagnosis file exists:
+# create hotfix branch from main, spawn CLI to fix, run tests, ask permission.
+# NEVER auto-merges — user must send /apply_fix to deploy.
+if [ -f "$DIAGNOSIS_PENDING" ] && [ -f "$GEMINI_DIR/diagnosis_output.txt" ] && [ -s "$GEMINI_DIR/diagnosis_output.txt" ]; then
+    AUTO_FIX=$(python3 -c "import json; print(json.load(open('$GEMINI_DIR/state.json')).get('auto_fix_enabled', False))" 2>/dev/null || echo "False")
+    SEVERITY=$(grep -oE "CRITICAL|HIGH" "$GEMINI_DIR/diagnosis_output.txt" | head -1)
+
+    if [ "$AUTO_FIX" = "True" ] && [ -n "$SEVERITY" ]; then
+        log "🔧 Auto-fix triggered (severity: $SEVERITY) — preparing hotfix"
+        HOTFIX_BRANCH="hotfix/auto-$(date +%s)"
+        cd "$PROJECT_DIR" || exit 0
+        git checkout -b "$HOTFIX_BRANCH" main 2>/dev/null || { log "❌ Auto-fix: could not create hotfix branch"; exit 0; }
+
+        DIAGNOSIS=$(cat "$GEMINI_DIR/diagnosis_output.txt")
+        FIX_PROMPT="Fix a bug in the Antigravity bot. Apply the MINIMAL change. Do NOT refactor. Do NOT change test files.
+Diagnosis:
+$DIAGNOSIS"
+
+        if [ "$BACKEND" = "kilo" ]; then
+            source "$SCRIPT_DIR/bot/.env" 2>/dev/null
+            [ -n "${KILO_API_KEY:-}" ] && export OPENROUTER_API_KEY="$KILO_API_KEY"
+            kilo run --auto ${MODEL:+--model "$MODEL"} "$FIX_PROMPT" >"$GEMINI_DIR/autofix_output.txt" 2>&1
+        else
+            gemini -p "$FIX_PROMPT" >"$GEMINI_DIR/autofix_output.txt" 2>&1
+        fi
+
+        cd "$BOT_DIR" && npm test >"$GEMINI_DIR/autofix_test.log" 2>&1
+        TEST_EXIT=$?
+        cd "$PROJECT_DIR"
+
+        if [ $TEST_EXIT -eq 0 ]; then
+            DIFF_SUMMARY=$(git diff main --stat 2>/dev/null | tail -5)
+            log "✅ Hotfix ready ($HOTFIX_BRANCH) — awaiting user approval"
+            python3 -c "
+import json, datetime, sys
+msg = {'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+       'text': '🔧 Hotfix ready (${SEVERITY}):\n${DIFF_SUMMARY}\n\nTests: PASSED ✅\nBranch: ${HOTFIX_BRANCH}\n\nSend /apply_fix to deploy or /discard_fix to discard.',
+       'sent': False}
+try:
+    with open('$GEMINI_DIR/wa_outbox.json') as f: d = json.load(f)
+except: d = {'messages': []}
+d['messages'].append(msg)
+with open('$GEMINI_DIR/wa_outbox.json', 'w') as f: json.dump(d, f, indent=2)
+" 2>/dev/null
+        else
+            git checkout main 2>/dev/null && git branch -D "$HOTFIX_BRANCH" 2>/dev/null
+            log "❌ Auto-fix failed tests — hotfix discarded"
+            python3 -c "
+import json, datetime
+msg = {'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+       'text': '❌ Auto-fix failed tests. Manual fix needed.\nSee: .gemini/autofix_test.log',
+       'sent': False}
+try:
+    with open('$GEMINI_DIR/wa_outbox.json') as f: d = json.load(f)
+except: d = {'messages': []}
+d['messages'].append(msg)
+with open('$GEMINI_DIR/wa_outbox.json', 'w') as f: json.dump(d, f, indent=2)
+" 2>/dev/null
+        fi
+    fi
+fi

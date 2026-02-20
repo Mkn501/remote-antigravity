@@ -194,6 +194,9 @@ bot.onText(/^\/help/, async (msg) => {
         '/restart — Kill + restart watcher with diagnostics',
         '/watchdog — Watchdog status (restart history)',
         '/diagnose — Trigger LLM crash diagnosis from logs',
+        '/autofix — Toggle auto-fix mode (prepare fix + ask permission)',
+        '/apply_fix — Apply pending hotfix to main + restart',
+        '/discard_fix — Discard pending hotfix branch',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help);
 });
@@ -875,7 +878,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart', '/watchdog', '/diagnose'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart', '/watchdog', '/diagnose', '/autofix', '/apply_fix', '/discard_fix'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
@@ -1045,6 +1048,63 @@ bot.onText(/^\/diagnose/, async (msg) => {
     console.log(`\uD83D\uDD0D ${new Date().toISOString()} | /diagnose triggered`);
 });
 
+// --- /autofix Command: Toggle auto-fix mode ---
+bot.onText(/^\/autofix/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        const state = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+        state.auto_fix_enabled = !state.auto_fix_enabled;
+        writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+        await bot.sendMessage(CHAT_ID,
+            state.auto_fix_enabled
+                ? '\uD83D\uDD27 Auto-fix ENABLED \u2014 on repeated crashes, LLM will prepare a fix and ask your permission'
+                : '\uD83D\uDD12 Auto-fix DISABLED \u2014 diagnosis only (read-only mode)'
+        );
+        console.log(`\uD83D\uDD27 ${new Date().toISOString()} | /autofix toggled: ${state.auto_fix_enabled}`);
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `\u274C Failed to toggle auto-fix: ${err.message}`);
+    }
+});
+
+// --- /apply_fix Command: Merge pending hotfix to main + restart ---
+bot.onText(/^\/apply_fix/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        const branches = execSync('git branch', { encoding: 'utf8', cwd: PROJECT_DIR });
+        const match = branches.match(/hotfix\/auto-\d+/);
+        if (!match) {
+            await bot.sendMessage(CHAT_ID, '\u274C No pending hotfix branch found.');
+            return;
+        }
+        const hotfix = match[0].trim();
+        execSync(`git checkout main && git merge ${hotfix} --no-edit`, { cwd: PROJECT_DIR, encoding: 'utf8' });
+        execSync(`git branch -d ${hotfix}`, { cwd: PROJECT_DIR, encoding: 'utf8' });
+        await bot.sendMessage(CHAT_ID, `\u2705 Hotfix merged to main. Restarting bot...`);
+        console.log(`\u2705 ${new Date().toISOString()} | /apply_fix: merged ${hotfix} to main`);
+        setTimeout(() => process.exit(0), 500); // Watchdog restarts on main
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `\u274C Apply failed: ${err.message}`);
+    }
+});
+
+// --- /discard_fix Command: Delete pending hotfix branch ---
+bot.onText(/^\/discard_fix/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        const branches = execSync('git branch', { encoding: 'utf8', cwd: PROJECT_DIR });
+        const match = branches.match(/hotfix\/auto-\d+/);
+        if (!match) {
+            await bot.sendMessage(CHAT_ID, '\u274C No pending hotfix branch found.');
+            return;
+        }
+        const hotfix = match[0].trim();
+        execSync(`git checkout main && git branch -D ${hotfix}`, { cwd: PROJECT_DIR, encoding: 'utf8' });
+        await bot.sendMessage(CHAT_ID, `\uD83D\uDDD1\uFE0F Hotfix ${hotfix} discarded.`);
+        console.log(`\uD83D\uDDD1\uFE0F ${new Date().toISOString()} | /discard_fix: deleted ${hotfix}`);
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `\u274C Discard failed: ${err.message}`);
+    }
+});
 
 // Track watcher status to avoid spamming alerts
 let watcherWasAlive = true;
