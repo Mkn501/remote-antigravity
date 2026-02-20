@@ -84,6 +84,11 @@ case "${1:-start}" in
             git -C "$SCRIPT_DIR" checkout main 2>/dev/null
         fi
 
+        # Rotate logs — diagnosis reads last 30 lines, stale entries cause false reports
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        [ -f "$LOG_DIR/bot.log" ] && mv "$LOG_DIR/bot.log" "$LOG_DIR/bot.log.$TIMESTAMP" 2>/dev/null
+        [ -f "$LOG_DIR/watcher.log" ] && mv "$LOG_DIR/watcher.log" "$LOG_DIR/watcher.log.$TIMESTAMP" 2>/dev/null
+
         # Start bot
         echo "  🤖 Starting bot..."
         cd "$BOT_DIR" && node bot.js >> "$LOG_DIR/bot.log" 2>&1 &
