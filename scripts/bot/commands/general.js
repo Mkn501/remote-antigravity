@@ -105,4 +105,11 @@ export function register(bot, ctx) {
 
         await bot.sendMessage(CHAT_ID, statusLines.join('\n'));
     });
+
+    registerCommand(/^\/ping/, async (msg) => {
+        if (!authorized(msg)) {
+            return;
+        }
+        await bot.sendMessage(CHAT_ID, 'pong');
+    });
 }

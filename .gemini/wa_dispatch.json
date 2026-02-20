@@ -8,7 +8,8 @@
       "platform": "gemini",
       "model": "gemini-2.5-flash",
       "parallel": false,
-      "deps": []
+      "deps": [],
+      "taskStatus": "done"
     },
     {
       "id": 2,

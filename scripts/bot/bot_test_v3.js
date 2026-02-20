@@ -425,7 +425,7 @@ await test('[contract] all 18 bot commands have handlers in v3', () => {
         'sprint', 'stop',
         'review_plan',
         'kill', 'clear_lock', 'restart', 'watchdog',
-        'diagnose', 'autofix', 'apply_fix', 'discard_fix'
+        'diagnose', 'autofix', 'apply_fix', 'discard_fix', 'ping'
     ];
     for (const cmd of expectedCommands) {
         const pattern = new RegExp(`registerCommand\\(.*\\\\\\/${cmd}`);
@@ -673,6 +673,66 @@ await test('[watcher] /version command output format', async () => {
     strictEqual(receivedMessages.length, 1);
     ok(receivedMessages[0].text.includes('wa-bridge Bot'));
     ok(receivedMessages[0].text.includes(`📦 Version: ${version}`));
+});
+
+await test('[behavioral] /ping replies pong when authorized', async () => {
+    // Dynamically import and register commands for this test
+    const { register } = await import('./commands/general.js');
+    const mockCtx = {
+        CHAT_ID,
+        authorized: (msg) => true, // Mock authorized to always return true
+        registerCommand: (regexp, handler) => {
+            mockBot._handlers.push({ regexp, handler });
+        },
+        getState: testGetState,
+        readJsonSafe,
+        formatUptime,
+        INBOX,
+        OUTBOX,
+        CENTRAL_DIR,
+        DISPATCH_FILE: DISPATCH,
+        BOT_START_TIME: Date.now() - 100000,
+        // Add any other context properties that general.js might use
+    };
+    register(mockBot, mockCtx);
+
+    const msg = { chat: { id: CHAT_ID }, text: '/ping' };
+    const handler = mockBot._handlers.find(h => h.regexp.test(msg.text));
+    ok(handler, 'handler for /ping should be registered');
+
+    await handler.handler(msg);
+
+    strictEqual(receivedMessages.length, 1);
+    strictEqual(receivedMessages[0].text, 'pong');
+    strictEqual(receivedMessages[0].chatId, CHAT_ID);
+});
+
+await test('[behavioral] /ping does not reply when unauthorized', async () => {
+    const { register } = await import('./commands/general.js');
+    const mockCtx = {
+        CHAT_ID,
+        authorized: (msg) => false, // Mock authorized to always return false
+        registerCommand: (regexp, handler) => {
+            mockBot._handlers.push({ regexp, handler });
+        },
+        getState: testGetState,
+        readJsonSafe,
+        formatUptime,
+        INBOX,
+        OUTBOX,
+        CENTRAL_DIR,
+        DISPATCH_FILE: DISPATCH,
+        BOT_START_TIME: Date.now() - 100000,
+    };
+    register(mockBot, mockCtx);
+
+    const msg = { chat: { id: CHAT_ID }, text: '/ping' };
+    const handler = mockBot._handlers.find(h => h.regexp.test(msg.text));
+    ok(handler, 'handler for /ping should be registered');
+
+    await handler.handler(msg);
+
+    strictEqual(receivedMessages.length, 0, 'bot should not send a message when unauthorized');
 });
 
 await test('[watcher] watcher.sh has write_to_outbox function', () => {
