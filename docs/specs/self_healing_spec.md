@@ -8,18 +8,20 @@
 
 ## 1. Executive Summary
 
-The system currently has no recovery mechanism when the watcher or bot crashes — requiring manual SSH/local terminal intervention. This spec introduces three recovery levels:
+The system currently has no recovery mechanism when the watcher or bot crashes — requiring manual SSH/local terminal intervention. This spec introduces four recovery levels:
 
 1. **Phase 1: `/restart` Command** ✅ — Telegram command to restart the watcher, clear stale state, and report what went wrong. Works when the **bot is alive but the watcher is stuck**.
 2. **Phase 2: External Watchdog** ✅ — Independent process that monitors bot + watcher and auto-restarts on crash. Solves the **chicken-and-egg problem** — works even when the bot itself is down.
-3. **Phase 3: LLM Self-Diagnosis** — When the watchdog detects repeated crashes (≥2 in a row), it spawns the **active CLI backend** (Gemini or Kilo, from `state.json`) to read logs, diagnose the root cause, and report findings to Telegram. Optionally proposes a fix.
+3. **Phase 3: LLM Self-Diagnosis** ✅ — When the watchdog detects repeated crashes (≥2 in a row), it spawns the **active CLI backend** (Gemini or Kilo, from `state.json`) to read logs, diagnose the root cause, and report findings to Telegram.
+4. **Phase 4: Auto-Fix & Hot-Deploy** — When diagnosis identifies a code bug, the LLM creates a hotfix branch from `main`, applies the fix, runs tests, and if passing: merges to `main` and restarts the bot process. Reports result to Telegram.
 
 ### Recovery Levels
 | Level | Mechanism | Requires | Solves |
 |---|---|---|---|
 | 1 | `/restart` command | Bot alive | Watcher stuck/crashed |
 | 2 | External watchdog | Nothing (independent) | Bot crashed, watcher crashed |
-| 3 | LLM self-diagnosis | Watchdog + Kilo CLI | Identify & fix bugs (future) |
+| 3 | LLM self-diagnosis | Watchdog + CLI backend | Repeated crashes → root cause report |
+| 4 | Auto-fix & hot-deploy | Diagnosis + tests pass | Code bugs → auto-patch + restart |
 
 ## 2. Goals
 
@@ -285,17 +287,120 @@ bot.onText(/^\/diagnose/, async (msg) => {
 
 ### 3.4 Safety Guards
 
-| Guard | Phase 1 | Phase 2 | Phase 3 |
-|---|---|---|---|
-| CHAT_ID auth | ✅ Required | N/A | ✅ Required (/diagnose) |
-| Restart loop guard | N/A | ✅ Max 3/hour | ✅ Max 1 diagnosis/hour |
-| Lock cleanup | ✅ On restart | ✅ On restart | N/A |
-| Read-only mode | N/A | N/A | ✅ Prompt says DO NOT modify files |
-| Cost guard | N/A | N/A | ✅ Uses active backend (Gemini sub or free-tier Kilo) |
-| Dedup guard | N/A | N/A | ✅ `diagnosis_pending` flag file |
+| Guard | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
+|---|---|---|---|---|
+| CHAT_ID auth | ✅ | N/A | ✅ (/diagnose) | ✅ (/autofix) |
+| Restart loop guard | N/A | ✅ Max 3/hour | ✅ Max 1/hour | ✅ Max 1/hour |
+| Lock cleanup | ✅ | ✅ | N/A | ✅ On restart |
+| Read-only mode | N/A | N/A | ✅ | ❌ (writes code) |
+| Test gate | N/A | N/A | N/A | ✅ npm test must pass |
+| Hotfix branch | N/A | N/A | N/A | ✅ Never touches main directly |
+| Opt-in | N/A | N/A | N/A | ✅ `auto_fix_enabled` in state.json |
+| Severity filter | N/A | N/A | N/A | ✅ CRITICAL/HIGH only |
+| Cost guard | N/A | N/A | ✅ Active backend | ✅ Active backend |
+| Dedup guard | N/A | N/A | ✅ `diagnosis_pending` | ✅ Same flag |
 
 > [!CAUTION]
-> Phase 3 LLM diagnosis is **read-only advisory**. The LLM does NOT modify files, commit code, or restart processes. It only produces a text report. Human must review and apply any suggested fix.
+> Phase 3 LLM diagnosis is **read-only advisory**. The LLM does NOT modify files, commit code, or restart processes. It only produces a text report.
+
+> [!WARNING]
+> Phase 4 **does modify files and restart processes**. It operates on a hotfix branch (never directly on `main`) and only merges after tests pass. A human can disable auto-fix via the `diagnosis_pending` flag or by removing `auto_fix_enabled` from `state.json`.
+
+### 3.5 Phase 4: Auto-Fix & Hot-Deploy
+
+**Concept**: When Phase 3 diagnosis identifies a code bug (severity CRITICAL or HIGH), the system automatically attempts to fix it by spawning the active CLI backend on a hotfix branch, running tests, and if green: merging to `main` and restarting the bot.
+
+#### Architecture
+```mermaid
+sequenceDiagram
+    participant WD as Watchdog
+    participant CLI as Gemini/Kilo CLI
+    participant GIT as Git
+    participant BOT as Bot Process
+    participant TG as Telegram
+
+    WD->>CLI: Phase 3 diagnosis complete
+    Note over WD: diagnosis_output.txt has severity CRITICAL/HIGH
+    WD->>GIT: git checkout -b hotfix/auto-<timestamp> main
+    WD->>CLI: "Fix this bug: <diagnosis>. Apply minimal patch."
+    CLI->>GIT: Modifies files on hotfix branch
+    WD->>WD: npm test
+    alt Tests pass
+        WD->>GIT: git checkout main && git merge hotfix/auto-*
+        WD->>BOT: pkill node.*bot.js && node bot.js &
+        WD->>TG: "✅ Auto-fix applied: <summary>. Bot restarted."
+    else Tests fail
+        WD->>GIT: git checkout main (discard hotfix)
+        WD->>TG: "❌ Auto-fix failed tests. Manual intervention needed."
+    end
+```
+
+#### Key Design Decisions
+
+1. **Branch strategy**: Hotfix branches from `main`, never from `telegram/active`. This avoids the divergence problem — the running bot process always uses `main`.
+2. **Test gate**: Fix is ONLY merged if `npm test` passes. No blind deploys.
+3. **Minimal patch**: The prompt instructs the LLM to make the smallest possible change. No refactoring.
+4. **Opt-in**: Auto-fix only runs if `state.json` has `"auto_fix_enabled": true`. Default is `false`.
+5. **Same chat ID**: Bot restarts with the same token + chat ID. No new chat needed.
+6. **Rollback**: If the restarted bot crashes again, the watchdog detects it and the hotfix commit is identifiable by its branch name.
+
+#### Watchdog Trigger (pseudo-code)
+```bash
+# After Phase 3 diagnosis completes
+if [ -f "$GEMINI_DIR/diagnosis_output.txt" ]; then
+    SEVERITY=$(grep -oE "CRITICAL|HIGH" "$GEMINI_DIR/diagnosis_output.txt" | head -1)
+    AUTO_FIX=$(python3 -c "import json; print(json.load(open('$GEMINI_DIR/state.json')).get('auto_fix_enabled', False))" 2>/dev/null || echo "False")
+
+    if [ -n "$SEVERITY" ] && [ "$AUTO_FIX" = "True" ]; then
+        log "🔧 Auto-fix triggered (severity: $SEVERITY)"
+        HOTFIX_BRANCH="hotfix/auto-$(date +%s)"
+        cd "$PROJECT_DIR"
+        git checkout -b "$HOTFIX_BRANCH" main
+
+        # Spawn LLM to fix
+        FIX_PROMPT="Fix this bug on the current branch. Make the MINIMAL change needed.
+        Diagnosis: $(cat $GEMINI_DIR/diagnosis_output.txt)
+        Do NOT refactor. Do NOT change tests. Apply the smallest patch."
+
+        if [ "$BACKEND" = "kilo" ]; then
+            kilo run --auto ${MODEL:+--model "$MODEL"} "$FIX_PROMPT"
+        else
+            gemini -p "$FIX_PROMPT"
+        fi
+
+        # Test gate
+        cd "$BOT_DIR" && npm test > "$GEMINI_DIR/autofix_test.log" 2>&1
+        if [ $? -eq 0 ]; then
+            git checkout main && git merge "$HOTFIX_BRANCH" --no-edit
+            pkill -f "node.*bot.js" 2>/dev/null
+            cd "$BOT_DIR" && node bot.js >> "$GEMINI_DIR/bot.log" 2>&1 &
+            log "✅ Auto-fix merged + bot restarted (PID $!)"
+            write_to_outbox "✅ Auto-fix applied for $SEVERITY issue. Bot restarted."
+        else
+            git checkout main
+            git branch -D "$HOTFIX_BRANCH" 2>/dev/null
+            log "❌ Auto-fix failed tests — discarding"
+            write_to_outbox "❌ Auto-fix failed tests. Manual fix needed."
+        fi
+        rm -f "$GEMINI_DIR/diagnosis_pending"
+    fi
+fi
+```
+
+#### `/autofix` Manual Command
+```javascript
+bot.onText(/^\/autofix/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    const state = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    state.auto_fix_enabled = !state.auto_fix_enabled;
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    await bot.sendMessage(CHAT_ID,
+        state.auto_fix_enabled
+            ? '🔧 Auto-fix ENABLED — bot will attempt to self-repair on CRITICAL/HIGH crashes'
+            : '🔒 Auto-fix DISABLED — diagnosis only (read-only mode)'
+    );
+});
+```
 
 ## 4. Spikes
 
@@ -321,12 +426,19 @@ No new dependencies. All standard macOS/Unix tools.
 - Add `/watchdog` status command to bot.js
 - Add regression tests
 
-### Phase 3: LLM Self-Diagnosis (~1.5 hours)
-- Add diagnosis trigger to `watchdog.sh` (≥2 crashes → spawn Kilo)
+### Phase 3: LLM Self-Diagnosis (~1.5 hours) ✅
+- Add diagnosis trigger to `watchdog.sh` (≥2 crashes → spawn CLI)
 - Create `scripts/diagnose_prompt.txt` template
 - Add `/diagnose` manual command to bot.js
 - Add regression tests
 - E2E test with mock crash scenario
+
+### Phase 4: Auto-Fix & Hot-Deploy (~3 hours)
+- Add auto-fix trigger to `watchdog.sh` (post-diagnosis)
+- Add `/autofix` toggle command to `bot.js`
+- Add `auto_fix_enabled` to `state.json`
+- Add regression tests
+- Update documentation
 
 ## 7. Security & Risks
 
@@ -342,6 +454,12 @@ No new dependencies. All standard macOS/Unix tools.
   - **Mitigation**: `diagnosis_pending` flag file prevents re-trigger until cleared
 - **Risk**: API cost from diagnosis calls
   - **Mitigation**: Uses active backend — Gemini subscription has no extra cost; Kilo uses configured model from `state.json`
+- **Risk**: Auto-fix introduces new bugs
+  - **Mitigation**: Test gate (`npm test` must pass before merge); hotfix branch (never directly on `main`); opt-in via `auto_fix_enabled`
+- **Risk**: Auto-fix on wrong branch / stale code
+  - **Mitigation**: Always branches from `main` (not `telegram/active`); fresh checkout
+- **Risk**: Bot restarts with broken code after auto-fix
+  - **Mitigation**: Watchdog detects re-crash within 60s; won't auto-fix again (dedup guard)
 
 ## 8. Testing
 
@@ -353,6 +471,8 @@ No new dependencies. All standard macOS/Unix tools.
 | Watchdog script | `bot.test.js` | script exists, checks bot+watcher, restart loop guard |
 | `/diagnose` command | `bot.test.js` | handler exists, in BOT_COMMANDS |
 | Diagnosis trigger | `bot.test.js` | watchdog has diagnosis logic, pending flag, prompt template |
+| `/autofix` command | `bot.test.js` | handler exists, in BOT_COMMANDS, toggles state |
+| Auto-fix trigger | `bot.test.js` | watchdog has auto-fix logic, test gate, branches from main |
 
 ### 8.2 Regression Suite
 
@@ -443,6 +563,38 @@ No new dependencies. All standard macOS/Unix tools.
 - **Tier:** ⚡ Mid
 - **Difficulty:** 2
 
+### Task 8: Add auto-fix trigger to watchdog
+- **File(s):** `scripts/watchdog.sh` (existing)
+- **Action:** After diagnosis completes, check severity (CRITICAL/HIGH) + `auto_fix_enabled` in state.json. If both true: create hotfix branch from main, spawn CLI to fix, run `npm test`, merge if green, restart bot. Report to Telegram.
+- **Signature:** Watchdog reads `diagnosis_output.txt` → `git checkout -b hotfix/auto-*` → spawn CLI → `npm test` → merge or discard
+- **Scope Boundary:** ONLY modify `watchdog.sh`. Do NOT touch bot.js.
+- **Dependencies:** Requires Tasks 5-7 (Phase 3 complete)
+- **Parallel:** No
+- **Acceptance:** `bash -n watchdog.sh` passes; auto-fix logic present in source
+- **Tier:** 🧠 Top
+- **Difficulty:** 7
+
+### Task 9: Add `/autofix` toggle command to bot.js
+- **File(s):** `scripts/bot/bot.js` (new handler)
+- **Action:** Add `/autofix` command that toggles `auto_fix_enabled` in `state.json`. Add to BOT_COMMANDS and /help.
+- **Signature:** `bot.onText(/^\/autofix/, async (msg) => ...)` → toggles state.json flag
+- **Scope Boundary:** ONLY modify `bot.js`. Do NOT touch watchdog.sh.
+- **Dependencies:** None (independent toggle)
+- **Parallel:** Yes (can be done in parallel with Task 8)
+- **Acceptance:** `npm test` passes; `/autofix` toggles state.json flag
+- **Tier:** ⚡ Mid
+- **Difficulty:** 2
+
+### Task 10: Add Phase 4 regression tests
+- **File(s):** `scripts/bot/bot.test.js`
+- **Action:** Add tests: `/autofix` handler exists, `/autofix` in BOT_COMMANDS, watchdog has auto-fix trigger, watchdog has test gate, watchdog branches from main (not telegram/active)
+- **Scope Boundary:** ONLY modify `bot.test.js`.
+- **Dependencies:** Requires Tasks 8 + 9
+- **Parallel:** No
+- **Acceptance:** `npm test` passes with new tests
+- **Tier:** ⚡ Mid
+- **Difficulty:** 2
+
 ## 10. Dependency Graph
 
 ```
@@ -450,32 +602,38 @@ Task 1 (/restart cmd) ──→ Task 2 (tests)       [Phase 1] ✅ DONE
 
 Task 3 (watchdog.sh)  ──→ Task 4 (/watchdog)   [Phase 2] ✅ DONE
                        ↘
-                         Task 5 (diagnosis trigger) ──→ Task 7 (tests)
+                         Task 5 (diagnosis)  ──→ Task 7 (tests)  [Phase 3] ✅ DONE
 
-Task 6 (/diagnose cmd) ──→ Task 7 (tests)      [Phase 3, independent]
+Task 6 (/diagnose cmd) ──→ Task 7 (tests)      [Phase 3] ✅ DONE
+                                                   ↓
+                         Task 8 (auto-fix trigger) ──→ Task 10 (tests)  [Phase 4]
+
+Task 9 (/autofix cmd)  ──→ Task 10 (tests)     [Phase 4, independent]
 ```
 
 ## 11. Execution Plan Summary
 
 | # | Task | Summary | Diff | Tier | ∥? | Deps | Status |
 |---|---|---|---|---|---|---|---|
-| 1 | `/restart` command | Kill watcher + restart + report | 3/10 ⭐⭐ | ⚡ Mid | ✅ | — | ✅ Done |
-| 2 | `/restart` tests | Regression tests | 2/10 ⭐ | ⚡ Mid | ❌ | 1 | ✅ Done |
-| 3 | External watchdog | watchdog.sh + launchd plist | 4/10 ⭐⭐ | ⚡ Mid | ✅ | — | ✅ Done |
-| 4 | `/watchdog` command + tests | Status command + tests | 3/10 ⭐⭐ | ⚡ Mid | ❌ | 3 | ✅ Done |
-| 5 | Diagnosis trigger | Watchdog spawns Kilo on ≥2 crashes | 5/10 🔥 | 🧠 Top | ❌ | 3,4 | To Do |
-| 6 | `/diagnose` command | Manual Telegram trigger | 3/10 ⭐⭐ | ⚡ Mid | ✅ | — | To Do |
-| 7 | Phase 3 tests | Regression tests | 2/10 ⭐ | ⚡ Mid | ❌ | 5,6 | To Do |
-
-**Overall Score**: 3.3/10 + 1 (new pattern) = **4.3/10 (Moderate)**
+| 1 | `/restart` command | Kill watcher + restart + report | 3/10 | ⚡ Mid | ✅ | — | ✅ Done |
+| 2 | `/restart` tests | Regression tests | 2/10 | ⚡ Mid | ❌ | 1 | ✅ Done |
+| 3 | External watchdog | watchdog.sh + launchd plist | 4/10 | ⚡ Mid | ✅ | — | ✅ Done |
+| 4 | `/watchdog` + tests | Status command + tests | 3/10 | ⚡ Mid | ❌ | 3 | ✅ Done |
+| 5 | Diagnosis trigger | Watchdog spawns CLI on ≥2 crashes | 5/10 | 🧠 Top | ❌ | 3,4 | ✅ Done |
+| 6 | `/diagnose` command | Manual Telegram trigger | 3/10 | ⚡ Mid | ✅ | — | ✅ Done |
+| 7 | Phase 3 tests | Regression tests | 2/10 | ⚡ Mid | ❌ | 5,6 | ✅ Done |
+| 8 | Auto-fix trigger | Watchdog applies fix + restarts bot | 7/10 | 🧠 Top | ❌ | 5-7 | To Do |
+| 9 | `/autofix` command | Toggle auto-fix on/off | 2/10 | ⚡ Mid | ✅ | — | To Do |
+| 10 | Phase 4 tests | Regression tests | 2/10 | ⚡ Mid | ❌ | 8,9 | To Do |
 
 ## 12. Parallelism Notes
 
-- **Three tracks** (Phases 1-2 done, Phase 3 remaining):
+- **Four tracks** (Phases 1-3 done, Phase 4 remaining):
   - ~~Track A: Tasks 1→2 (`/restart` command)~~ ✅
   - ~~Track B: Tasks 3→4 (external watchdog)~~ ✅
-  - **Track C: Tasks 5+6→7 (LLM diagnosis)** — Task 6 is independent, can start in parallel with Task 5
-- Recommended order: **Task 6 first** (quickest, self-contained in bot.js)
+  - ~~Track C: Tasks 5+6→7 (LLM diagnosis)~~ ✅
+  - **Track D: Tasks 8+9→10 (Auto-fix)** — Task 9 is independent, can start in parallel with Task 8
+- Recommended order: **Task 9 first** (quickest, self-contained in bot.js), then Task 8 (complex watchdog logic)
 
 ---
 > **Template Version**: 2.0
