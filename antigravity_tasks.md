@@ -8,33 +8,33 @@
 
 ## In Progress
 
-- [ ] [Security] [Bot] Add CHAT_ID check to callback_query handler [Difficulty: 1]
+- [x] [Security] [Bot] Add CHAT_ID check to callback_query handler [Difficulty: 1]
 
 ## To Do
 
-- [ ] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4]
-- [ ] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4]
-- [ ] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2]
+- [x] [Feature] [Watcher] Backend-agnostic CLI support (Gemini + Kilo) [Ref: docs/specs/backend_agnostic_watcher_spec.md] [Difficulty: 4]
+- [x] Extend regression test suite (12 new tests for backend abstraction) [Difficulty: 4]
+- [x] Update cli_comparative_analysis.md with Kilo headless findings [Difficulty: 2]
 
-- [ ] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
-- [ ] **Summary:** Adds a command to display the current bot version and process uptime.
-- [ ] **File(s):** scripts/bot/bot.js
-- [ ] **Action:** Add `bot.onText(/\/version/, ...)` handler.
-- [ ] **Signature:** `(msg) => Promise<void>`
-- [ ] **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
+- [x] [Feature] [Bot] Implement `/version` command handler [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
+- [x] **Summary:** Adds a command to display the current bot version and process uptime.
+- [x] **File(s):** scripts/bot/bot.js
+- [x] **Action:** Add `bot.onText(/\/version/, ...)` handler.
+- [x] **Signature:** `(msg) => Promise<void>`
+- [x] **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
 - [ ] **Dependencies:** None
 - [ ] **Parallel:** Yes
-- [ ] **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
+- [x] **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
 - [ ] **Tier:** ⚡ Mid
-- [ ] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
-- [ ] **Summary:** Ensures the /version command returns the expected format and doesn't crash.
-- [ ] **File(s):** scripts/bot/bot.test.js
-- [ ] **Action:** Add a test case that mocks the message and asserts the response.
-- [ ] **Signature:** `await test('/version command returns version and uptime', ...)`
-- [ ] **Scope Boundary:** ONLY modify bot.test.js.
+- [x] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2]
+- [x] **Summary:** Ensures the /version command returns the expected format and doesn't crash.
+- [x] **File(s):** scripts/bot/bot.test.js
+- [x] **Action:** Add a test case that mocks the message and asserts the response.
+- [x] **Signature:** `await test('/version command returns version and uptime', ...)`
+- [x] **Scope Boundary:** ONLY modify bot.test.js.
 - [ ] **Dependencies:** None
 - [ ] **Parallel:** Yes
-- [ ] **Acceptance:** `npm test` passes.
+- [x] **Acceptance:** `npm test` passes.
 - [ ] **Tier:** ⚡ Mid
 - [ ] [Feature] [Bot] Add dispatch mode field and Auto-Run button [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
   - **Summary:** Adds `mode` field to dispatch JSON and "🚀 Auto-Run" button in plan review.
@@ -109,7 +109,7 @@
   - **Dependencies:** Requires diagnosis trigger + /diagnose command.
   - **Acceptance:** `npm test` passes with new tests.
 - [ ] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
-- [ ] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
+- [x] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
 
 ## Backlog
