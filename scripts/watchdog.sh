@@ -67,3 +67,57 @@ if [ -f "$RESTART_TRACKER" ]; then
         mv "${RESTART_TRACKER}.tmp" "$RESTART_TRACKER" 2>/dev/null || true
     fi
 fi
+
+# --- LLM Self-Diagnosis (Phase 3) ---
+# If ≥2 crashes this hour and no diagnosis pending, spawn LLM to analyze logs
+CRASH_COUNT=$(grep -c "$HOUR" "$RESTART_TRACKER" 2>/dev/null || echo "0")
+DIAGNOSIS_PENDING="$GEMINI_DIR/diagnosis_pending"
+
+if [ "$CRASH_COUNT" -ge 2 ] && ! [ -f "$DIAGNOSIS_PENDING" ]; then
+    log "🔍 Repeated crashes ($CRASH_COUNT) — triggering LLM diagnosis"
+    touch "$DIAGNOSIS_PENDING"
+
+    # Collect diagnostic context
+    WATCHER_TAIL=$(tail -50 "$GEMINI_DIR/watcher.log" 2>/dev/null || echo "(no log)")
+    BOT_TAIL=$(tail -50 "$GEMINI_DIR/bot.log" 2>/dev/null || echo "(no log)")
+
+    # Build diagnosis prompt
+    PROMPT_TEMPLATE=""
+    if [ -f "$SCRIPT_DIR/diagnose_prompt.txt" ]; then
+        PROMPT_TEMPLATE=$(cat "$SCRIPT_DIR/diagnose_prompt.txt")
+    else
+        PROMPT_TEMPLATE="You are a systems reliability engineer. The Antigravity bot/watcher system has crashed multiple times in the last hour. Analyze the logs below and:
+
+1. Identify the ROOT CAUSE of the crash
+2. Determine if it is a code bug, config issue, or external failure
+3. Suggest a specific fix (file + line if possible)
+4. Rate severity: CRITICAL / HIGH / MEDIUM / LOW
+
+Do NOT modify any files. Output your analysis as plain text."
+    fi
+
+    PROMPT="$PROMPT_TEMPLATE
+
+=== WATCHER LOG (last 50 lines) ===
+$WATCHER_TAIL
+
+=== BOT LOG (last 50 lines) ===
+$BOT_TAIL"
+
+    # Read active backend from state.json
+    BACKEND=$(python3 -c "import json; print(json.load(open('$GEMINI_DIR/state.json')).get('backend','gemini'))" 2>/dev/null || echo "gemini")
+    MODEL=$(python3 -c "import json; print(json.load(open('$GEMINI_DIR/state.json')).get('model',''))" 2>/dev/null || echo "")
+
+    # Spawn diagnosis via active backend (fire-and-forget)
+    if [ "$BACKEND" = "kilo" ]; then
+        source "$SCRIPT_DIR/bot/.env" 2>/dev/null
+        [ -n "${KILO_API_KEY:-}" ] && export OPENROUTER_API_KEY="$KILO_API_KEY"
+        kilo run --auto ${MODEL:+--model "$MODEL"} "$PROMPT" \
+            >"$GEMINI_DIR/diagnosis_output.txt" 2>&1 &
+    else
+        gemini -p "$PROMPT" \
+            >"$GEMINI_DIR/diagnosis_output.txt" 2>&1 &
+    fi
+    log "✅ Diagnosis spawned via $BACKEND (PID $!)"
+fi
+

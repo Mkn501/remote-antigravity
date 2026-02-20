@@ -2251,6 +2251,43 @@ await test('self-healing: /watchdog is in BOT_COMMANDS', () => {
 });
 
 // ============================================================================
+// 21. Self-Healing: LLM Diagnosis (Phase 3)
+// ============================================================================
+
+await test('self-healing: /diagnose handler exists in bot.js', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes('bot.onText(/^\\/diagnose/'), 'should have /diagnose handler');
+});
+
+await test('self-healing: /diagnose is in BOT_COMMANDS', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const commandsMatch = src.match(/BOT_COMMANDS\s*=\s*\[(.*?)\]/s);
+    ok(commandsMatch, 'BOT_COMMANDS array should exist');
+    ok(commandsMatch[1].includes('/diagnose'), '/diagnose should be in BOT_COMMANDS');
+});
+
+await test('self-healing: watchdog has diagnosis trigger', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh'), 'utf8');
+    ok(src.includes('CRASH_COUNT'), 'should track crash count');
+    ok(src.includes('-ge 2'), 'should trigger on ≥2 crashes');
+    ok(src.includes('diagnosis'), 'should have diagnosis logic');
+});
+
+await test('self-healing: watchdog has diagnosis_pending dedup guard', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh'), 'utf8');
+    ok(src.includes('diagnosis_pending'), 'should use diagnosis_pending flag');
+    ok(src.includes('touch'), 'should create flag file to prevent re-trigger');
+});
+
+await test('self-healing: diagnose_prompt.txt template exists', () => {
+    const promptPath = resolve(PROJECT_ROOT, 'scripts', 'diagnose_prompt.txt');
+    ok(existsSync(promptPath), 'scripts/diagnose_prompt.txt should exist');
+    const content = readFileSync(promptPath, 'utf8');
+    ok(content.includes('ROOT CAUSE'), 'prompt should ask for root cause');
+    ok(content.includes('Do NOT modify'), 'prompt should enforce read-only');
+});
+
+// ============================================================================
 // SUMMARY
 // ============================================================================
 

@@ -179,6 +179,7 @@ bot.onText(/^\/help/, async (msg) => {
         '/clear_lock — Clear stuck session lock',
         '/restart — Kill + restart watcher with diagnostics',
         '/watchdog — Watchdog status (restart history)',
+        '/diagnose — Trigger LLM crash diagnosis from logs',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help);
 });
@@ -857,7 +858,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart', '/watchdog'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart', '/watchdog', '/diagnose'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
@@ -993,6 +994,38 @@ bot.onText(/^\/watchdog/, async (msg) => {
         `📂 Log: .gemini/watchdog.log`
     ].join('\n');
     await bot.sendMessage(CHAT_ID, status);
+});
+
+// --- /diagnose Command: Manual LLM crash diagnosis ---
+bot.onText(/^\/diagnose/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+
+    // Collect last 30 lines of each log
+    let wLog = '(empty)', bLog = '(empty)';
+    try { wLog = execSync(`tail -30 "${WATCHER_LOG}"`, { encoding: 'utf8', timeout: 3000 }).trim(); } catch { }
+    try { bLog = execSync(`tail -30 "${CENTRAL_DIR}/bot.log"`, { encoding: 'utf8', timeout: 3000 }).trim(); } catch { }
+
+    const prompt = [
+        'You are a systems reliability engineer. The Antigravity bot/watcher system',
+        'may be experiencing issues. Analyze the logs below and:',
+        '',
+        '1. Identify the ROOT CAUSE of any errors or crashes',
+        '2. Determine if it is a code bug, config issue, or external failure',
+        '3. Suggest a specific fix (file + line if possible)',
+        '4. Rate severity: CRITICAL / HIGH / MEDIUM / LOW',
+        '',
+        'Do NOT modify any files. Output your analysis as plain text.',
+        '',
+        '=== WATCHER LOG (last 30 lines) ===',
+        wLog,
+        '',
+        '=== BOT LOG (last 30 lines) ===',
+        bLog
+    ].join('\n');
+
+    await bot.sendMessage(CHAT_ID, '\uD83D\uDD0D Spawning diagnosis agent...');
+    writeToInbox(prompt);
+    console.log(`\uD83D\uDD0D ${new Date().toISOString()} | /diagnose triggered`);
 });
 
 
