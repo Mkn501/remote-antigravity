@@ -957,7 +957,7 @@ setInterval(async () => {
                     process.kill(pid, 0);
                 } catch (err) {
                     if (err.code === 'ESRCH') {
-                        await bot.sendMessage(CHAT_ID, `⚠️ Stale Lock Detected\nWatcher process (PID ${pid}) is dead but lock file remains.\nAuto-clearing lock...`);
+                        // Silently auto-clear — no need to alarm the user
                         unlinkSync(LOCK_FILE);
                         console.log(`💀 Auto-cleared stale lock for dead PID ${pid}`);
                     }

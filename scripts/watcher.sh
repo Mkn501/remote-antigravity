@@ -258,7 +258,10 @@ while true; do
 
             echo "📬 $(date +%H:%M:%S) | $UNREAD_COUNT msg(s) → Launching in: $(basename "$ACTIVE_PROJECT")"
             MSG_PREVIEW=$(echo "$USER_MESSAGES" | head -1 | cut -c1-60)
-            write_to_outbox "📥 Message received: $MSG_PREVIEW"
+            # Echo message preview (skip system/diagnosis prompts)
+            if ! echo "$USER_MESSAGES" | head -1 | grep -q "^You are a"; then
+                write_to_outbox "📥 Message received: $MSG_PREVIEW"
+            fi
             echo "$$" > "$LOCK_FILE"
 
             (
