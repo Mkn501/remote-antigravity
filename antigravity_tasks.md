@@ -8,7 +8,7 @@
 
 ## In Progress
 
-- [x] [Security] [Bot] Add CHAT_ID check to callback_query handler [Difficulty: 1]
+- [ ] -
 
 ## To Do
 
@@ -111,9 +111,19 @@
 - [x] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1]
 - [x] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
+- [ ] [Security] [Bot] Remove duplicate `/kill` handler (SEC-4, P0) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
+- [ ] [Security] [Bot] Fix overly broad `pkill` patterns in `/kill` (SEC-2, P0) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
+- [ ] [Bug] [Bot] Fix undefined `PROJECT_DIR` in `/apply_fix` and `/discard_fix` (MAINT-4, P0) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
+- [ ] [Security] [Bot] Add branch name sanitization in `/apply_fix` (SEC-1, P1) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
+- [ ] [Bug] [Bot] Remove duplicate dotenv import (MAINT-2, P1) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
+- [ ] [Bug] [Bot] Use `getState()` consistently — replace raw JSON.parse in `/autofix` (MAINT-3, P1) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
+- [ ] [Bug] [Testing] Fix stale BOT_COMMANDS in test (8 vs 18 actual) [Ref: docs/specs/bot_test_refactoring_spec.md] [Difficulty: 1]
+- [ ] [Bug] [Testing] Fix atomicWrite divergence in bot.test.js [Ref: docs/specs/bot_test_refactoring_spec.md] [Difficulty: 1]
 
 ## Backlog
 
+- [ ] [Architecture] [Bot] Modular bot.js refactor (12 modules) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 7]
+- [ ] [Architecture] [Testing] Migrate to node:test runner + tiered test files [Ref: docs/specs/bot_test_refactoring_spec.md] [Difficulty: 5]
 - [ ] Replace inline Gemini invocation with `run_agent()` [Difficulty: 4]
 - [ ] Generalize prompt tool references (generic tool names) [Difficulty: 2]
 - [ ] Update `/help`, `/status`, BOT_COMMANDS [Difficulty: 2]
@@ -157,6 +167,9 @@
 - [x] Add `get_backend()` + `run_agent()` abstraction to watcher.sh [Difficulty: 5]
 - [x] Add `/backend` command to bot.js with inline keyboard [Difficulty: 4]
 - [x] Add callback handler for backend selection [Difficulty: 3]
+- [x] [Security] [Bot] Add CHAT_ID check to callback_query handler [Difficulty: 1] - COMPLETED 2026-02-20
+- [x] [Docs] [Bot] Critical review specs: bot_refactoring_spec.md + bot_test_refactoring_spec.md - COMPLETED 2026-02-20
+- [x] [Infra] [Git] Merge telegram/active, delete destructive session branch, cleanup remotes - COMPLETED 2026-02-20
 
 ## Deleted
 

@@ -1,27 +1,28 @@
 # Active Context
 
 ## Next Session Goal
-- [ ] Implement Parallel Dispatch & Auto-Run (Phase 4 of Planning) [Ref: docs/specs/parallel_kilo_dispatch_spec.md]
+- [ ] Execute P0 quick fixes from `bot_refactoring_spec.md`: remove duplicate `/kill`, fix broad `pkill`, fix undefined `PROJECT_DIR`
 
 ## Current Focus
-- [x] **Session 2026-02-20**: Stability & Cleanup.
-- **Status**: False-positive rate limit bug fixed. Backend-agnostic watcher confirmed & synced.
+- [x] **Session 2026-02-20 (PM)**: Merge & Code Review.
+- **Status**: Merged telegram/active, deleted destructive session branch, wrote critical review specs for bot.js and bot.test.js.
 
 ## Open Work Items
+- P0: Duplicate `/kill` handler, broad `pkill`, undefined `PROJECT_DIR` (bot_refactoring_spec.md)
+- P1: Shell injection fix, consistent state access, duplicate import
+- P3: bot.js modular split → then test refactoring
 - Feature: Parallel Dispatch (To Do)
-- Security: `$MODEL_FLAG` quoting (To Do)
-- Reliability: Flash + Sandbox replace errors (To Do)
+- Reliability: Flash + Sandbox replace errors (Research)
 
 ## Recent Changes
-- Fixed false-positive rate limit detection in watcher.sh (checked exit code 0).
-- Confirmed & Synced Backend-Agnostic Watcher implementation (Kilo/Gemini).
-- Confirmed `/version` command implementation.
-- Documented Builder-Ready Planning Phase 1 as implemented (2026-02-18).
-- Implemented plan mode auto-clear on dispatch approval (2026-02-18).
-- Fixed callback mismatch (`ep_next` → `ep_continue`) (2026-02-18).
+- Merged `telegram/active` (task checkbox) to main, deleted destructive session branch.
+- Created `docs/specs/bot_refactoring_spec.md` — 5 security, 5 maintainability, 5 refactoring findings.
+- Created `docs/specs/bot_test_refactoring_spec.md` — stale test data, code duplication, grep-heavy tests.
+- Self-healing system stabilized: diagnosis pipeline, auto-fix workflow, log rotation, branch guards.
 
 <details><summary>Older Sessions</summary>
 
+- **2026-02-20 (AM)**: Self-healing stabilization (diagnosis, auto-fix, log rotation, branch guards).
 - **2026-02-18**: E2E Fixes & Plan Mode.
 - **2026-02-17**: Regression tests (45 tests), prompt fixes, Kilo CLI research.
 - **2026-02-16 (PM)**: Refactored PR Check/Merge workflows, added version footers, synced template.
@@ -43,3 +44,5 @@
 | 8 | **Bot callbacks must match watcher data exactly** — simple string mismatch causes silent UI failures |
 | 9 | **Flash + Sandbox struggles with large files** — `replace` tool often fails to find context in >1000 line files |
 | 10 | **Gemini CLI Auto-Retry is Silent** — stderr warnings about rate limits don't mean failure if exit code is 0 |
+| 11 | **Monolithic files are AI-hostile** — Gemini CLI deleted Phase 4 handlers because it couldn't reason about 1,373-line bot.js. Smaller modules = safer AI edits. |
+| 12 | **Test helpers must never diverge from production** — bot.test.js had its own `atomicWrite()` that did double-write instead of atomic rename, validating wrong code. |
