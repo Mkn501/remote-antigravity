@@ -246,6 +246,11 @@ while true; do
             if echo "$USER_MESSAGES" | grep -qi "^/plan_feature\|^/plan "; then
                 IS_PLAN_FEATURE=true
             fi
+            # Detect diagnosis prompts (from /diagnose or watchdog auto-trigger)
+            IS_DIAGNOSIS=false
+            if echo "$USER_MESSAGES" | head -1 | grep -q "^You are a"; then
+                IS_DIAGNOSIS=true
+            fi
             # Auto-detect plan mode: if .wa_plan_mode marker exists, we're still in planning
             PLAN_MODE_FILE="$DOT_GEMINI/wa_plan_mode"
             if [ -f "$PLAN_MODE_FILE" ] && [ "$IS_PLAN_FEATURE" = false ]; then
@@ -442,6 +447,12 @@ Rules for the reply file:
                     else
                         write_to_outbox "✅ $FALLBACK_MODEL succeeded."
                     fi
+                fi
+
+                # Save diagnosis output to file for auto-fix trigger
+                if [ "$IS_DIAGNOSIS" = true ] && [ -n "$AGENT_OUTPUT" ]; then
+                    echo "$AGENT_OUTPUT" > "$GEMINI_DIR/diagnosis_output.txt"
+                    echo "📋 $(date +%H:%M:%S) | Diagnosis output saved to diagnosis_output.txt"
                 fi
 
                 # Read Telegram reply from file (written by Gemini)
