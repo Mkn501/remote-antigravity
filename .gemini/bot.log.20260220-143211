@@ -1,0 +1,6 @@
+🤖 wa-bridge v3 started at 2026-02-20T13:30:14.749Z
+📂 Project root: /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity
+📂 Central dir: /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini
+📋 Registered 20 commands: /help, /version, /status, /model, /backend, /project, /project, /add, /list, /sprint, /stop, /review_plan, /kill, /clear_lock, /restart, /watchdog, /diagnose, /autofix, /apply_fix, /discard_fix
+Health check error: getState is not a function
+\n👋 SIGTERM received, shutting down...

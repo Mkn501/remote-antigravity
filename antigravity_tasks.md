@@ -24,12 +24,12 @@
   - **Tier:** ⚡ Mid
 - [ ] [Feature] [Testing] Add `/ping` regression test [Ref: docs/specs/ping_command_spec.md] [Difficulty: 1]
   - **Summary:** Verifies `/ping` command validation and response.
-  - **File(s):** scripts/bot/bot.test.js
+  - **File(s):** scripts/bot/bot_test_v3.js
   - **Action:** Add test case for `/ping`.
   - **Signature:** `await test('/ping replies pong', ...)`
-  - **Scope Boundary:** ONLY modify bot.test.js.
+  - **Scope Boundary:** ONLY modify bot_test_v3.js.
   - **Dependencies:** Requires `/ping` command.
-  - **Acceptance:** `npm test` passes.
+  - **Acceptance:** `node scripts/bot/bot_test_v3.js` passes.
   - **Tier:** ⚡ Mid
 - [ ] [Feature] [Bot] Add dispatch mode field and Auto-Run button [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
   - **Summary:** Adds `mode` field to dispatch JSON and "🚀 Auto-Run" button in plan review.

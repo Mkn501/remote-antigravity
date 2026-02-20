@@ -1,0 +1,16 @@
+🤖 wa-bridge v3 started at 2026-02-20T13:16:19.363Z
+📂 Project root: /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity
+📂 Central dir: /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini
+📋 Registered 20 commands: /help, /version, /status, /model, /backend, /project, /project, /add, /list, /sprint, /stop, /review_plan, /kill, /clear_lock, /restart, /watchdog, /diagnose, /autofix, /apply_fix, /discard_fix
+🔍 2026-02-20T13:18:13.571Z | /diagnose triggered
+📤 2026-02-20T13:18:15.499Z | 💬 TEXT | 🧠 Running Gemini CLI (gemini-2.5-flash)...
+📤 2026-02-20T13:18:37.528Z | 💬 TEXT | 💾 Changes committed
+📤 2026-02-20T13:18:37.588Z | 💬 TEXT | • Log analysis complete.
+• No errors or crashes detected in the provided watc...
+📥 2026-02-20T13:20:19.594Z | Relayed to inbox: /plan_feature add a/ping command that replies to p
+📤 2026-02-20T13:20:21.553Z | 💬 TEXT | 📥 Message received: /plan_feature add a/ping command that replies to pong
+📤 2026-02-20T13:21:37.605Z | 💬 TEXT | 💾 Changes committed
+(node:24800) [node-telegram-bot-api] DeprecationWarning: In the future, content-type of files you send will default to "application/octet-stream". See https://github.com/yagop/node-telegram-bot-api/blob/master/doc/usage.md#sending-files for more information on how sending files has been improved and on how to disable this deprecation message altogether.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+📤 2026-02-20T13:21:37.770Z | 📎 DOC | /tmp/ping_command_spec.txt
+\n👋 SIGTERM received, shutting down...
