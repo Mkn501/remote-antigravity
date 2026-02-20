@@ -77,6 +77,13 @@ case "${1:-start}" in
         pkill -f "watcher.sh" 2>/dev/null
         sleep 1
 
+        # Always run from main branch
+        CURRENT_BRANCH=$(git -C "$SCRIPT_DIR" branch --show-current 2>/dev/null)
+        if [ "$CURRENT_BRANCH" != "main" ]; then
+            echo -e "  ${YELLOW}⚠️  On branch '$CURRENT_BRANCH' — switching to main${NC}"
+            git -C "$SCRIPT_DIR" checkout main 2>/dev/null
+        fi
+
         # Start bot
         echo "  🤖 Starting bot..."
         cd "$BOT_DIR" && node bot.js >> "$LOG_DIR/bot.log" 2>&1 &
