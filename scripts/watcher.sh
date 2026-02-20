@@ -57,6 +57,18 @@ echo ""
 cleanup() {
     rm -f "$LOCK_FILE"
     echo "👋 Watcher stopped"
+    # Notify Telegram that watcher has stopped
+    python3 -c "
+import json, datetime
+msg = {'timestamp': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+       'text': '🔴 Watcher stopped. Agent is no longer running.',
+       'sent': False}
+try:
+    with open('$GEMINI_DIR/wa_outbox.json') as f: d = json.load(f)
+except: d = {'messages': []}
+d['messages'].append(msg)
+with open('$GEMINI_DIR/wa_outbox.json', 'w') as f: json.dump(d, f, indent=2)
+" 2>/dev/null
     exit 0
 }
 trap cleanup SIGINT SIGTERM

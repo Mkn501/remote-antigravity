@@ -193,7 +193,11 @@ bot.onText(/^\/help/, async (msg) => {
         '/clear_lock — Clear stuck session lock',
         '/restart — Kill + restart watcher with diagnostics',
         '/watchdog — Watchdog status (restart history)',
+        '/kill — Force-kill running agent immediately (no wait)',
         '/diagnose — Trigger LLM crash diagnosis from logs',
+        '/autofix — Toggle auto-fix mode (prepare fix + ask permission)',
+        '/apply_fix — Apply pending hotfix to main + restart',
+        '/discard_fix — Discard pending hotfix branch',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help);
 });
@@ -765,8 +769,25 @@ bot.onText(/^\/sprint/, async (msg) => {
 bot.onText(/^\/stop/, async (msg) => {
     if (String(msg.chat.id) !== String(CHAT_ID)) return;
     writeToInbox('STOP');
-    await bot.sendMessage(CHAT_ID, '🔴 STOP signal sent.\nAgent will halt after completing current action.');
+    await bot.sendMessage(CHAT_ID, '🔴 STOP signal sent.\nAgent will halt after completing current action.\nUse /kill to force-stop immediately.');
     console.log(`🛑 ${new Date().toISOString()} | STOP signal sent`);
+});
+
+// --- /kill Command: Force-kill running agent immediately ---
+bot.onText(/^\/kill/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        // Kill Kilo CLI
+        execSync('pkill -f "kilo" 2>/dev/null || true');
+        // Kill Gemini CLI
+        execSync('pkill -f "gemini" 2>/dev/null || true');
+        // Clear lock so watcher isn't stuck
+        if (existsSync(LOCK_FILE)) unlinkSync(LOCK_FILE);
+        await bot.sendMessage(CHAT_ID, '🛑 Agent force-killed.\nLock cleared. Watcher is idle and ready.');
+        console.log(`🛑 ${new Date().toISOString()} | /kill — agent force-killed`);
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Kill failed: ${err.message}`);
+    }
 });
 
 bot.onText(/^\/status/, async (msg) => {
@@ -875,7 +896,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart', '/watchdog', '/diagnose'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart', '/watchdog', '/diagnose', '/autofix', '/apply_fix', '/discard_fix', '/kill'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
