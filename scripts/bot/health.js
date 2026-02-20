@@ -5,6 +5,9 @@
 import { existsSync, readFileSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
+import {
+    loadExecutionPlan, saveExecutionPlan, formatExecutionPlan, applyTierDefaults
+} from './commands/plan.js';
 
 export function isWatcherRunning() {
     try {
@@ -16,11 +19,37 @@ export function isWatcherRunning() {
 }
 
 export function startHealthCheck(bot, ctx) {
-    const { CHAT_ID, CENTRAL_DIR, LOCK_FILE, readJsonSafe } = ctx;
+    const { CHAT_ID, CENTRAL_DIR, LOCK_FILE, readJsonSafe, getState, updateState } = ctx;
     let watcherWasAlive = true;
+    let lastAutoTriggerPlanStatus = null;
 
     setInterval(async () => {
         try {
+            // --- Auto-trigger: check for pending execution plans ---
+            const plan = loadExecutionPlan(getState);
+            if (plan && (plan.status === 'pending_approval' || plan.status === 'pending_review')
+                && plan.tasks?.length && lastAutoTriggerPlanStatus !== plan.status) {
+                lastAutoTriggerPlanStatus = plan.status;
+                applyTierDefaults(plan);
+                plan.status = 'confirming';
+                saveExecutionPlan(plan, updateState);
+
+                await bot.sendMessage(CHAT_ID,
+                    '📋 New execution plan ready!\n\n' +
+                    formatExecutionPlan(plan) + '\n\n💡 Suggested by planner based on task tier.',
+                    {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: '🚀 Execute All', callback_data: 'ep_execute' }, { text: '✏️ Override Task', callback_data: 'ep_override' }],
+                                [{ text: '🔄 Re-plan', callback_data: 'ep_replan' }]
+                            ]
+                        }
+                    }
+                );
+                console.log(`📋 ${new Date().toISOString()} | Auto-triggered execution plan review`);
+            } else if (!plan || !plan.tasks?.length) {
+                lastAutoTriggerPlanStatus = null;
+            }
             // --- Check 1: Lock file health ---
             if (existsSync(LOCK_FILE)) {
                 const stats = statSync(LOCK_FILE);
