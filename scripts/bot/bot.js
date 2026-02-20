@@ -1066,6 +1066,76 @@ bot.onText(/^\/diagnose/, async (msg) => {
     console.log(`\uD83D\uDD0D ${new Date().toISOString()} | /diagnose triggered`);
 });
 
+// --- /autofix Command: Toggle auto-fix mode ---
+bot.onText(/^\/autofix/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        const state = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+        state.auto_fix_enabled = !state.auto_fix_enabled;
+        writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+        const status = state.auto_fix_enabled
+            ? '🔧 Auto-fix ENABLED — bot will attempt to self-repair on CRITICAL/HIGH crashes'
+            : '🔒 Auto-fix DISABLED — diagnosis only (read-only mode)';
+        await bot.sendMessage(CHAT_ID, status);
+        console.log(`🔧 ${new Date().toISOString()} | /autofix: ${state.auto_fix_enabled}`);
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Toggle failed: ${err.message}`);
+    }
+});
+
+// --- /apply_fix Command: Merge pending hotfix to main + restart ---
+bot.onText(/^\/apply_fix/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        const branches = execSync('git branch', { encoding: 'utf8', cwd: PROJECT_DIR });
+        const match = branches.match(/hotfix\/auto-\d+/);
+        if (!match) {
+            await bot.sendMessage(CHAT_ID, '❌ No pending hotfix branch found.');
+            return;
+        }
+        const hotfix = match[0].trim();
+        execSync(`git checkout main && git merge ${hotfix} --no-edit`, { cwd: PROJECT_DIR, encoding: 'utf8' });
+        execSync(`git branch -d ${hotfix}`, { cwd: PROJECT_DIR, encoding: 'utf8' });
+        await bot.sendMessage(CHAT_ID, `✅ Hotfix merged to main. Restarting bot...`);
+        console.log(`✅ ${new Date().toISOString()} | /apply_fix: merged ${hotfix} to main`);
+        setTimeout(() => process.exit(0), 500);
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Apply failed: ${err.message}`);
+    }
+});
+
+// --- /discard_fix Command: Delete pending hotfix branch ---
+bot.onText(/^\/discard_fix/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        const branches = execSync('git branch', { encoding: 'utf8', cwd: PROJECT_DIR });
+        const match = branches.match(/hotfix\/auto-\d+/);
+        if (!match) {
+            await bot.sendMessage(CHAT_ID, '❌ No pending hotfix branch found.');
+            return;
+        }
+        const hotfix = match[0].trim();
+        execSync(`git checkout main && git branch -D ${hotfix}`, { cwd: PROJECT_DIR, encoding: 'utf8' });
+        await bot.sendMessage(CHAT_ID, `🗑️ Hotfix ${hotfix} discarded.`);
+        console.log(`🗑️ ${new Date().toISOString()} | /discard_fix: deleted ${hotfix}`);
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Discard failed: ${err.message}`);
+    }
+});
+
+// --- /kill Command: Force-kill running agent immediately ---
+bot.onText(/^\/kill/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+    try {
+        execSync('pkill -f "kilo" 2>/dev/null || true');
+        execSync('pkill -f "gemini" 2>/dev/null || true');
+        if (existsSync(LOCK_FILE)) unlinkSync(LOCK_FILE);
+        await bot.sendMessage(CHAT_ID, '🛑 Agent force-killed.\nLock cleared. Watcher is idle and ready.');
+        console.log(`🛑 ${new Date().toISOString()} | /kill — agent force-killed`);
+    } catch (err) {
+        await bot.sendMessage(CHAT_ID, `❌ Kill failed: ${err.message}`);
+    }
+});
 
 // Track watcher status to avoid spamming alerts
 let watcherWasAlive = true;

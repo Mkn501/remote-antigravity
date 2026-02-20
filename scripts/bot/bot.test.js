@@ -2329,6 +2329,44 @@ await test('self-healing: watchdog hotfix branches from main', () => {
 });
 
 // ============================================================================
+// 23. Diagnosis Pipeline E2E — output saving, model routing, /kill
+// ============================================================================
+
+await test('diagnosis: watcher detects IS_DIAGNOSIS from "You are a" prefix', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(src.includes('IS_DIAGNOSIS=false'), 'should init IS_DIAGNOSIS flag');
+    ok(src.includes('You are a'), 'should detect diagnosis prompt prefix');
+    ok(src.includes('IS_DIAGNOSIS=true'), 'should set IS_DIAGNOSIS to true');
+});
+
+await test('diagnosis: output saved to DOT_GEMINI (not GEMINI_DIR)', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    // The diagnosis save block must use $DOT_GEMINI, not $GEMINI_DIR
+    const saveBlock = src.match(/Save diagnosis output[\s\S]{0,300}diagnosis_output\.txt/);
+    ok(saveBlock, 'should have diagnosis output save block');
+    ok(saveBlock[0].includes('$DOT_GEMINI'), 'must use $DOT_GEMINI variable');
+    ok(!saveBlock[0].includes('$GEMINI_DIR'), 'must NOT use $GEMINI_DIR (unbound in subshell)');
+});
+
+await test('diagnosis: routed to Flash model (not Pro)', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(src.includes('IS_DIAGNOSIS') && src.includes('ROUTINE_MODEL'), 'should route diagnosis to ROUTINE_MODEL');
+    ok(src.includes('for diagnosis (fast'), 'should log diagnosis routing');
+});
+
+await test('diagnosis: watcher stop sends confirmation to outbox', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(src.includes('Watcher stopped. Agent is no longer running'), 'cleanup should write stop message to outbox');
+});
+
+await test('bot: /kill handler exists and clears lock', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes('bot.onText(/^\\/kill/'), 'should have /kill handler');
+    ok(src.includes('pkill -f "kilo"') || src.includes("pkill -f 'kilo'") || src.includes('pkill -f \\"kilo\\"'), 'should kill kilo CLI');
+    ok(src.includes('LOCK_FILE'), '/kill should reference lock file');
+});
+
+// ============================================================================
 // SUMMARY
 // ============================================================================
 
