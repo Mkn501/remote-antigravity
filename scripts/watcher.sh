@@ -135,6 +135,8 @@ run_agent() {
     AGENT_STDERR_FILE=$(mktemp)
     local AGENT_STDOUT_FILE
     AGENT_STDOUT_FILE=$(mktemp)
+    local AGENT_EXIT_CODE_FILE
+    AGENT_EXIT_CODE_FILE=$(mktemp)
 
     case "$backend" in
         kilo)
@@ -147,7 +149,11 @@ run_agent() {
             KILO_ARGS+=("$prompt")
             (
                 cd "$project_dir" || exit 1
-                kilo "${KILO_ARGS[@]}" >"$AGENT_STDOUT_FILE" 2>"$AGENT_STDERR_FILE"
+                if kilo "${KILO_ARGS[@]}" >"$AGENT_STDOUT_FILE" 2>"$AGENT_STDERR_FILE"; then
+                    echo 0 > "$AGENT_EXIT_CODE_FILE"
+                else
+                    echo $? > "$AGENT_EXIT_CODE_FILE"
+                fi
             ) || true
             ;;
         gemini|*)
@@ -164,7 +170,11 @@ run_agent() {
             fi
             (
                 cd "$project_dir" || exit 1
-                gemini "${GEMINI_ARGS[@]}" >"$AGENT_STDOUT_FILE" 2>"$AGENT_STDERR_FILE"
+                if gemini "${GEMINI_ARGS[@]}" >"$AGENT_STDOUT_FILE" 2>"$AGENT_STDERR_FILE"; then
+                    echo 0 > "$AGENT_EXIT_CODE_FILE"
+                else
+                    echo $? > "$AGENT_EXIT_CODE_FILE"
+                fi
             ) || true
             # Restore hooks immediately
             if [ "$SETTINGS_BACKED_UP" = true ] && [ -f "${TARGET_SETTINGS}.watcher-bak" ]; then
@@ -176,9 +186,10 @@ run_agent() {
     # Export results to caller scope
     AGENT_OUTPUT=$(cat "$AGENT_STDOUT_FILE" 2>/dev/null || echo "")
     AGENT_STDERR_CONTENT=$(cat "$AGENT_STDERR_FILE" 2>/dev/null || echo "")
+    AGENT_EXIT_CODE=$(cat "$AGENT_EXIT_CODE_FILE" 2>/dev/null || echo "1")
     # Append stderr to session log
     cat "$AGENT_STDERR_FILE" >> "$DOT_GEMINI/wa_session.log" 2>/dev/null || true
-    rm -f "$AGENT_STDOUT_FILE" "$AGENT_STDERR_FILE"
+    rm -f "$AGENT_STDOUT_FILE" "$AGENT_STDERR_FILE" "$AGENT_EXIT_CODE_FILE"
 }
 
 while true; do
@@ -401,7 +412,7 @@ Rules for the reply file:
 
                 # Detect rate limit / quota errors
                 RATE_LIMITED=false
-                if echo "$AGENT_STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
+                if [ "${AGENT_EXIT_CODE:-0}" -ne 0 ] && echo "$AGENT_STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
                     RATE_LIMITED=true
                     write_to_outbox "⚠️ Rate limit hit on $ACTIVE_MODEL."
                     echo "⚠️  Rate limit detected for $ACTIVE_MODEL" >&2
@@ -720,7 +731,7 @@ CRITICAL: Follow the task description EXACTLY. Implement only this specific task
 
                     # Check for errors
                     TASK_ERROR=""
-                    if echo "$AGENT_STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
+                    if [ "${AGENT_EXIT_CODE:-0}" -ne 0 ] && echo "$AGENT_STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted|too.many.requests'; then
                         TASK_ERROR="Rate limit hit on $TASK_MODEL"
                     fi
 

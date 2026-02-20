@@ -1,27 +1,28 @@
 # Active Context
 
 ## Next Session Goal
-- [ ] Fix false-positive rate limit detection (check exit code 0) [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md]
+- [ ] Implement Parallel Dispatch & Auto-Run (Phase 4 of Planning) [Ref: docs/specs/parallel_kilo_dispatch_spec.md]
 
 ## Current Focus
-- [x] **Session 2026-02-18**: E2E Fixes & Plan Mode.
-- **Status**: Plan mode auto-clear implemented, Next Task button fixed. Flash execution reliability identified as risk.
+- [x] **Session 2026-02-20**: Stability & Cleanup.
+- **Status**: False-positive rate limit bug fixed. Backend-agnostic watcher confirmed & synced.
 
 ## Open Work Items
-- Security: CHAT_ID callback auth (In Progress)
+- Feature: Parallel Dispatch (To Do)
 - Security: `$MODEL_FLAG` quoting (To Do)
 - Reliability: Flash + Sandbox replace errors (To Do)
-- Reliability: False-positive rate limit errors (To Do)
 
 ## Recent Changes
+- Fixed false-positive rate limit detection in watcher.sh (checked exit code 0).
+- Confirmed & Synced Backend-Agnostic Watcher implementation (Kilo/Gemini).
+- Confirmed `/version` command implementation.
 - Documented Builder-Ready Planning Phase 1 as implemented (2026-02-18).
 - Implemented plan mode auto-clear on dispatch approval (2026-02-18).
 - Fixed callback mismatch (`ep_next` → `ep_continue`) (2026-02-18).
-- Expanded regression suite to 99 tests (2026-02-18).
-- Deleted `telegram/active` branch (failed Flash run cleanup).
 
 <details><summary>Older Sessions</summary>
 
+- **2026-02-18**: E2E Fixes & Plan Mode.
 - **2026-02-17**: Regression tests (45 tests), prompt fixes, Kilo CLI research.
 - **2026-02-16 (PM)**: Refactored PR Check/Merge workflows, added version footers, synced template.
 - **2026-02-16 (AM)**: Conversation history refactor, model/project selection UI, security review.
