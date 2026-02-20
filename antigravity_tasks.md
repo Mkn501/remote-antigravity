@@ -69,24 +69,24 @@
   - **Action:** Add worktree lifecycle test, parallel merge test, conflict detection test.
   - **Dependencies:** Requires parallel dispatch implementation.
   - **Acceptance:** `npm test` passes; `bash test_kilo_e2e.sh` passes.
-- [ ] [Feature] [Bot] Implement `/restart` command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
+- [x] [Feature] [Bot] Implement `/restart` command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
   - **Summary:** Telegram command to kill watcher, clear stale lock, spawn new watcher, report diagnostics.
   - **File(s):** scripts/bot/bot.js (new handler)
   - **Action:** Add `/restart` handler with watcher kill, lock cleanup, log tail, watcher spawn.
   - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
   - **Acceptance:** `npm test` passes; `/restart` in Telegram restarts watcher.
-- [ ] [Feature] [Testing] Add `/restart` regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2]
+- [x] [Feature] [Testing] Add `/restart` regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2]
   - **Summary:** Tests for restart handler, lock cleanup, BOT_COMMANDS update.
   - **File(s):** scripts/bot/bot.test.js
   - **Dependencies:** Requires `/restart` command.
   - **Acceptance:** `npm test` passes with new tests.
-- [ ] [Feature] [Infra] Create external watchdog script + launchd plist [Ref: docs/specs/self_healing_spec.md] [Difficulty: 4]
+- [x] [Feature] [Infra] Create external watchdog script + launchd plist [Ref: docs/specs/self_healing_spec.md] [Difficulty: 4]
   - **Summary:** Independent process that monitors bot + watcher PIDs, auto-restarts on crash.
   - **File(s):** scripts/watchdog.sh (NEW), com.antigravity.watchdog.plist (NEW)
   - **Action:** Create health check script with restart loop guard (max 3/hour). Create launchd plist.
   - **Scope Boundary:** ONLY create new files. Do NOT modify existing scripts.
   - **Acceptance:** `bash -n watchdog.sh` passes.
-- [ ] [Feature] [Bot] Add `/watchdog` status command + tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
+- [x] [Feature] [Bot] Add `/watchdog` status command + tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3]
   - **Summary:** Shows watchdog status (last restart, restart count, uptime) in Telegram.
   - **File(s):** scripts/bot/bot.js, scripts/bot/bot.test.js
   - **Dependencies:** Requires watchdog script.
