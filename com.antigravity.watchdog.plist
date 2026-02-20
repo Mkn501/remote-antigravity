@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Antigravity Watchdog — macOS launchd service
+  
+  Install:
+    cp com.antigravity.watchdog.plist ~/Library/LaunchAgents/
+    # Edit ProgramArguments path below to match your project location
+    launchctl load ~/Library/LaunchAgents/com.antigravity.watchdog.plist
+  
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.antigravity.watchdog.plist
+    rm ~/Library/LaunchAgents/com.antigravity.watchdog.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.antigravity.watchdog</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <!-- UPDATE THIS PATH to your project's scripts/watchdog.sh -->
+        <string>/Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/scripts/watchdog.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/antigravity-watchdog.out</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/antigravity-watchdog.err</string>
+</dict>
+</plist>

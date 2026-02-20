@@ -178,6 +178,7 @@ bot.onText(/^\/help/, async (msg) => {
         '/backend — Switch CLI backend (Gemini/Kilo)',
         '/clear_lock — Clear stuck session lock',
         '/restart — Kill + restart watcher with diagnostics',
+        '/watchdog — Watchdog status (restart history)',
     ].join('\n');
     await bot.sendMessage(CHAT_ID, help);
 });
@@ -856,7 +857,7 @@ bot.onText(/^\/list/, async (msg) => {
 // --- Inbound: Telegram → wa_inbox.json ---
 bot.on('message', async (msg) => {
     // Skip bot-native commands (handled by their own handlers above)
-    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart'];
+    const BOT_COMMANDS = ['/stop', '/status', '/project', '/list', '/model', '/backend', '/add', '/help', '/version', '/sprint', '/review_plan', '/clear_lock', '/restart', '/watchdog'];
     if (msg.text && BOT_COMMANDS.some(cmd => msg.text.startsWith(cmd))) return;
 
     // Auth
@@ -954,6 +955,46 @@ bot.onText(/^\/restart/, async (msg) => {
     await bot.sendMessage(CHAT_ID, report);
     console.log(`✅ ${new Date().toISOString()} | Watcher restarted (PID ${newPid})`);
 });
+
+// --- /watchdog Command: Show watchdog status and restart history ---
+const WATCHDOG_LOG = resolve(CENTRAL_DIR, 'watchdog.log');
+const RESTART_TRACKER = '/tmp/ra-watchdog-restarts';
+
+bot.onText(/^\/watchdog/, async (msg) => {
+    if (String(msg.chat.id) !== String(CHAT_ID)) return;
+
+    const botAlive = true; // If we're responding, bot is alive
+    const watcherAlive = isWatcherRunning();
+
+    // Read restart count this hour
+    let restartCount = 0;
+    try {
+        const hour = new Date().toISOString().slice(0, 13).replace('T', '-');
+        const tracker = readFileSync(RESTART_TRACKER, 'utf8');
+        restartCount = (tracker.match(new RegExp(hour.slice(0, 10), 'g')) || []).length;
+    } catch { /* no tracker file */ }
+
+    // Read last restart from watchdog log
+    let lastRestart = 'never';
+    try {
+        const log = execSync(`grep -E "restarting|started" "${WATCHDOG_LOG}" | tail -1`,
+            { encoding: 'utf8', timeout: 3000 }).trim();
+        if (log) lastRestart = log.substring(0, 19); // timestamp
+    } catch { /* no log */ }
+
+    const status = [
+        '🐕 Watchdog Status',
+        '',
+        `🤖 Bot: ${botAlive ? '✅ running' : '❌ down'}`,
+        `👁️ Watcher: ${watcherAlive ? '✅ running' : '❌ down'}`,
+        `🔄 Restarts today: ${restartCount}`,
+        `📋 Last restart: ${lastRestart}`,
+        '',
+        `📂 Log: .gemini/watchdog.log`
+    ].join('\n');
+    await bot.sendMessage(CHAT_ID, status);
+});
+
 
 // Track watcher status to avoid spamming alerts
 let watcherWasAlive = true;

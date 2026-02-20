@@ -2218,6 +2218,39 @@ await test('self-healing: /restart listed in /help output', () => {
 });
 
 // ============================================================================
+// 20. Self-Healing: External Watchdog
+// ============================================================================
+
+await test('self-healing: watchdog.sh exists', () => {
+    const watchdogPath = resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh');
+    ok(existsSync(watchdogPath), 'scripts/watchdog.sh should exist');
+});
+
+await test('self-healing: watchdog.sh has valid syntax', () => {
+    const watchdogPath = resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh');
+    const result = execSync(`bash -n "${watchdogPath}" 2>&1`, { encoding: 'utf8' });
+    ok(true, 'watchdog.sh syntax is valid');
+});
+
+await test('self-healing: watchdog.sh has restart loop guard', () => {
+    const src = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watchdog.sh'), 'utf8');
+    ok(src.includes('RESTART_COUNT'), 'should track restart count');
+    ok(src.includes('-ge 3'), 'should have max 3 restarts limit');
+});
+
+await test('self-healing: /watchdog handler exists in bot.js', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    ok(src.includes('bot.onText(/^\\/watchdog/'), 'should have /watchdog handler');
+});
+
+await test('self-healing: /watchdog is in BOT_COMMANDS', () => {
+    const src = readFileSync(resolve(SCRIPT_DIR, 'bot.js'), 'utf8');
+    const commandsMatch = src.match(/BOT_COMMANDS\s*=\s*\[(.*?)\]/s);
+    ok(commandsMatch, 'BOT_COMMANDS array should exist');
+    ok(commandsMatch[1].includes('/watchdog'), '/watchdog should be in BOT_COMMANDS');
+});
+
+// ============================================================================
 // SUMMARY
 // ============================================================================
 
