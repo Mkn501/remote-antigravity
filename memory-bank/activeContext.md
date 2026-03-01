@@ -1,7 +1,11 @@
 # Active Context
 
 ## Next Session Goal
-- [ ] Execute P0 quick fixes from `bot_refactoring_spec.md`: remove duplicate `/kill`, fix broad `pkill`, fix undefined `PROJECT_DIR`
+- [ ] **P1: Multi-project routing fix** — implement 4 tasks from `docs/specs/multi_project_routing_fix_spec.md` (Diff: 1.75/10)
+  - Task 1: Stamp `project` in plan-creation (`watcher.sh` ~L588)
+  - Task 2: Add `project` to `writeDispatch()` (`bot_v2.js` ~L350)
+  - Task 3: Use dispatch `project` in watcher execution (`watcher.sh` ~L698)
+  - Task 4: Add 2 regression tests (`bot_test_v2.js`)
 
 ## Current Focus
 - [x] **Session 2026-02-20 (PM)**: Merge & Code Review.

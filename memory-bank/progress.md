@@ -3,7 +3,7 @@
 ## Status Dashboard
 - **Health**: 🟢 Healthy
 - **Phase**: Operational / Dogfooding
-- **Last Updated**: 2026-02-20
+- **Last Updated**: 2026-03-01
 
 ## Milestones
 - [x] **M1: Project Setup** — Scaffold from template, define scope
@@ -29,6 +29,12 @@
 - Duplicate `/kill` handler fires pkill twice (P0 in refactoring spec).
 - `PROJECT_DIR` undefined in `/apply_fix` and `/discard_fix` handlers (P0 bug).
 - Flash model reliability with `--sandbox` on large files (replace errors).
+- **P1: Dispatch routing bug** — tasks execute in active project, not originating project (fix specced in `multi_project_routing_fix_spec.md`)
+
+## Recent Milestones
+| Date | Milestone |
+|------|-----------|
+| 2026-03-01 | Investigated dispatch routing bug; wrote spec + 4 work orders (1.75/10 difficulty); P-005 pattern added |
 
 <details><summary>Completed Phases (Archive)</summary>
 

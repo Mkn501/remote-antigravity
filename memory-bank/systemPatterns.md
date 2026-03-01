@@ -21,6 +21,7 @@ graph LR
 | P-002 | **Hook-Bridged I/O** | BeforeAgent for inbound injection, AfterAgent for outbound extraction |
 | P-003 | **Shared Filesystem Sync** | CLI and IDE share memory-bank/ and tasks — no direct session link needed |
 | P-004 | **Wrapper Script Hook** | Use `exec` wrappers to launch hooks in paths with spaces (Gemini CLI workaround) |
+| P-005 | **Project-Aware Dispatch** | Dispatch tasks carry their originating project path (`wa_dispatch.json.project`), so tasks always execute in the project they were planned for, not the currently active project |
 
 ## Key Decisions
 - **No OpenClaw**: Direct Gemini CLI hooks + lightweight bot, no gateway layer

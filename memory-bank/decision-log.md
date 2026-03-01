@@ -47,3 +47,10 @@
 - **Rationale**: Merging was buried inside the validation workflow, violating separation of concerns. The user must always retain final merge authority.
 - **Outcome**: `/pr_check` produces a `.pr_check_result.json` state file; `/merge_changes` gates on that file. Rollback playbook and conflict handling added.
 - **Key Lesson**: Validation and execution are separate trust boundaries — never combine "should we?" with "do it."
+
+## 009: Project-Aware Dispatch (2026-03-01)
+- **Decision**: Add `project` field to `wa_dispatch.json` at plan-approval; watcher reads it for dispatch execution instead of `state.activeProject`.
+- **Rationale**: Dispatch tasks belong to the project they were planned for, not whichever project is currently active. Discovered when 3 dispatch runs silently committed nothing — CLI was in the wrong repo.
+- **Outcome**: Pending implementation (see `docs/specs/multi_project_routing_fix_spec.md`).
+- **T&E**: [Retrospective](../docs/retrospectives/2026-03-01_multi_project_dispatch_routing_bug.md)
+- **Key Lesson**: Dispatch files must be self-contained — carry all routing info needed to execute, never rely on transient state.

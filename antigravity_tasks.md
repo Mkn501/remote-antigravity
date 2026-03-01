@@ -1,9 +1,3 @@
-<!-- TASK_SCHEMA:
-  Category: [Bug], [Feature], [Infra], [Research], [Docs], [Security], [Release], [UX], [Architecture]
-  Topic: Optional sub-area (e.g., [Hooks], [Bot], [WhatsApp])
-  Difficulty: 1 (Trivial) to 10 (Expert/Arch Change)
-  Jules: [Jules: Yes] if atomic, deterministic, and testable (see plan_feature.md)
--->
 # Tasks - Antigravity Tasks
 
 ## In Progress
@@ -12,58 +6,83 @@
 
 ## To Do
 
+- [ ] [Bug] [Routing] Add `project` to execution plan in watcher plan-creation [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
+- [ ]   **Summary:** Stamp the executionPlan in state.json with the active project path at plan-creation time.
+- [ ]   **File(s):** scripts/watcher.sh (lines ~588)
+- [ ]   **Action:** Modify — add `'project': sys.argv[4]` to the Python block + pass `$ACTIVE_PROJECT` as 4th arg.
+- [ ]   **Dependencies:** None
+- [ ]   **Acceptance:** `jq '.executionPlan.project' .gemini/state.json` returns active project path after /plan_feature.
+- [ ] [Bug] [Routing] Add `project` to `writeDispatch()` in bot [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 1]
+- [ ]   **Summary:** Include the originating project path in wa_dispatch.json when plan is approved.
+- [ ]   **File(s):** scripts/bot/bot_v2.js (lines ~350-364)
+- [ ]   **Action:** Modify — add `project: plan.project || getState().activeProject` to dispatch object.
+- [ ]   **Dependencies:** None
+- [ ]   **Acceptance:** `jq '.project' .gemini/wa_dispatch.json` returns project path after plan approval.
+- [ ] [Bug] [Routing] Use dispatch `project` in watcher dispatch execution [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
+- [ ]   **Summary:** Read project from wa_dispatch.json instead of state.json for dispatch task execution.
+- [ ]   **File(s):** scripts/watcher.sh (lines ~697-701)
+- [ ]   **Action:** Modify — read `project` from dispatch file with fallback to state.activeProject.
+- [ ]   **Dependencies:** Requires Task 1+2 complete
+- [ ]   **Acceptance:** Dispatch runs tasks in the project from wa_dispatch.json even if state.activeProject has changed.
+- [ ] [Bug] [Routing] Add regression tests for project-aware dispatch [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
+- [ ]   **Summary:** 2 new tests: writeDispatch includes project field, writeDispatch falls back when plan.project missing.
+- [ ]   **File(s):** scripts/bot/bot_test_v2.js
+- [ ]   **Action:** Add tests at end of Execution Plan test section.
+- [ ]   **Dependencies:** Requires Task 2 complete
+- [ ]   **Acceptance:** `node scripts/bot/bot_test_v2.js` passes with increased test count.
+- [ ] ->
 - [ ] [Feature] [Bot] Implement `/ping` command [Ref: docs/specs/ping_command_spec.md] [Difficulty: 1]
-  - **Summary:** Adds a simple connectivity check command that replies "pong".
-  - **File(s):** scripts/bot/commands/general.js
-  - **Action:** Add `registerCommand(/^\/ping/, ...)` handler.
-  - **Signature:** `(msg) => Promise<void>`
-  - **Scope Boundary:** ONLY modify general.js.
-  - **Dependencies:** None
-  - **Parallel:** Yes
-  - **Acceptance:** `/ping` returns "pong".
-  - **Tier:** ⚡ Mid
+- [ ] **Summary:** Adds a simple connectivity check command that replies "pong".
+- [ ] **File(s):** scripts/bot/commands/general.js
+- [ ] **Action:** Add `registerCommand(/^\/ping/, ...)` handler.
+- [ ] **Signature:** `(msg) => Promise<void>`
+- [ ] **Scope Boundary:** ONLY modify general.js.
+- [ ] **Dependencies:** None
+- [ ] **Parallel:** Yes
+- [ ] **Acceptance:** `/ping` returns "pong".
+- [ ] **Tier:** ⚡ Mid
 - [ ] [Feature] [Testing] Add `/ping` regression test [Ref: docs/specs/ping_command_spec.md] [Difficulty: 1]
-  - **Summary:** Verifies `/ping` command validation and response.
-  - **File(s):** scripts/bot/bot.test.js
-  - **Action:** Add test case for `/ping`.
-  - **Signature:** `await test('/ping replies pong', ...)`
-  - **Scope Boundary:** ONLY modify bot.test.js.
-  - **Dependencies:** Requires `/ping` command.
-  - **Acceptance:** `npm test` passes.
-  - **Tier:** ⚡ Mid
+- [ ] **Summary:** Verifies `/ping` command validation and response.
+- [ ] **File(s):** scripts/bot/bot.test.js
+- [ ] **Action:** Add test case for `/ping`.
+- [ ] **Signature:** `await test('/ping replies pong', ...)`
+- [ ] **Scope Boundary:** ONLY modify bot.test.js.
+- [ ] **Dependencies:** Requires `/ping` command.
+- [ ] **Acceptance:** `npm test` passes.
+- [ ] **Tier:** ⚡ Mid
 - [ ] [Feature] [Bot] Add dispatch mode field and Auto-Run button [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
-  - **Summary:** Adds `mode` field to dispatch JSON and "🚀 Auto-Run" button in plan review.
-  - **File(s):** scripts/bot/bot.js (lines ~525-540, ep_execute handler)
-  - **Action:** Add `mode` parameter to `writeDispatch()` call; add auto-run button.
-  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
-  - **Acceptance:** `npm test` passes; dispatch JSON has `mode` field.
+- [ ] **Summary:** Adds `mode` field to dispatch JSON and "🚀 Auto-Run" button in plan review.
+- [ ] **File(s):** scripts/bot/bot.js (lines ~525-540, ep_execute handler)
+- [ ] **Action:** Add `mode` parameter to `writeDispatch()` call; add auto-run button.
+- [ ] **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
+- [ ] **Acceptance:** `npm test` passes; dispatch JSON has `mode` field.
 - [ ] [Feature] [Watcher] Implement auto-continue dispatch mode [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 3]
-  - **Summary:** Skip step-through pause when dispatch mode is `auto`.
-  - **File(s):** scripts/watcher.sh (lines ~787-810, continue-wait section)
-  - **Action:** Read `.mode` from dispatch JSON; if `auto`, skip `wa_dispatch_continue.json` wait.
-  - **Scope Boundary:** ONLY modify watcher.sh. Do NOT touch bot.js.
-  - **Dependencies:** Requires dispatch mode field (Task above).
-  - **Acceptance:** `bash -n watcher.sh` passes.
+- [ ] **Summary:** Skip step-through pause when dispatch mode is `auto`.
+- [ ] **File(s):** scripts/watcher.sh (lines ~787-810, continue-wait section)
+- [ ] **Action:** Read `.mode` from dispatch JSON; if `auto`, skip `wa_dispatch_continue.json` wait.
+- [ ] **Scope Boundary:** ONLY modify watcher.sh. Do NOT touch bot.js.
+- [ ] **Dependencies:** Requires dispatch mode field (Task above).
+- [ ] **Acceptance:** `bash -n watcher.sh` passes.
 - [ ] [Feature] [Testing] Add auto-continue regression tests [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 2]
-  - **Summary:** Behavioral tests for dispatch mode field and auto-continue logic.
-  - **File(s):** scripts/bot/bot.test.js
-  - **Action:** Add tests verifying mode field and watcher auto-continue behavior.
-  - **Scope Boundary:** ONLY modify bot.test.js.
-  - **Dependencies:** Requires auto-continue implementation.
-  - **Acceptance:** `npm test` passes with new tests.
+- [ ] **Summary:** Behavioral tests for dispatch mode field and auto-continue logic.
+- [ ] **File(s):** scripts/bot/bot.test.js
+- [ ] **Action:** Add tests verifying mode field and watcher auto-continue behavior.
+- [ ] **Scope Boundary:** ONLY modify bot.test.js.
+- [ ] **Dependencies:** Requires auto-continue implementation.
+- [ ] **Acceptance:** `npm test` passes with new tests.
 - [ ] [Feature] [Watcher] Implement parallel dispatch with git worktrees [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 7]
-  - **Summary:** Run independent Kilo tasks in parallel worktrees, merge results.
-  - **File(s):** scripts/watcher.sh (new `dispatch_parallel()` function)
-  - **Action:** Add parallel dispatch function with worktree create/run/merge/cleanup.
-  - **Scope Boundary:** ONLY modify watcher.sh. Do NOT touch bot.js.
-  - **Dependencies:** Requires auto-continue mode.
-  - **Acceptance:** `bash -n watcher.sh` passes; E2E test passes.
+- [ ] **Summary:** Run independent Kilo tasks in parallel worktrees, merge results.
+- [ ] **File(s):** scripts/watcher.sh (new `dispatch_parallel()` function)
+- [ ] **Action:** Add parallel dispatch function with worktree create/run/merge/cleanup.
+- [ ] **Scope Boundary:** ONLY modify watcher.sh. Do NOT touch bot.js.
+- [ ] **Dependencies:** Requires auto-continue mode.
+- [ ] **Acceptance:** `bash -n watcher.sh` passes; E2E test passes.
 - [ ] [Feature] [Testing] Add parallel dispatch E2E + regression tests [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 4]
-  - **Summary:** Worktree lifecycle, parallel merge, and conflict detection tests.
-  - **File(s):** scripts/bot/bot.test.js, scripts/bot/test_kilo_e2e.sh
-  - **Action:** Add worktree lifecycle test, parallel merge test, conflict detection test.
-  - **Dependencies:** Requires parallel dispatch implementation.
-  - **Acceptance:** `npm test` passes; `bash test_kilo_e2e.sh` passes.
+- [ ] **Summary:** Worktree lifecycle, parallel merge, and conflict detection tests.
+- [ ] **File(s):** scripts/bot/bot.test.js, scripts/bot/test_kilo_e2e.sh
+- [ ] **Action:** Add worktree lifecycle test, parallel merge test, conflict detection test.
+- [ ] **Dependencies:** Requires parallel dispatch implementation.
+- [ ] **Acceptance:** `npm test` passes; `bash test_kilo_e2e.sh` passes.
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
 - [ ] [Security] [Bot] Remove duplicate `/kill` handler (SEC-4, P0) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
 - [ ] [Security] [Bot] Fix overly broad `pkill` patterns in `/kill` (SEC-2, P0) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
@@ -94,59 +113,59 @@
 - [x] **Action:** Add `bot.onText(/\/version/, ...)` handler.
 - [x] **Signature:** `(msg) => Promise<void>`
 - [x] **Scope Boundary:** ONLY modify bot.js. Do NOT touch other handlers.
-- [ ] **Dependencies:** None
-- [ ] **Parallel:** Yes
+- [x] **Dependencies:** None
+- [x] **Parallel:** Yes
 - [x] **Acceptance:** `/version` returns "🤖 wa-bridge vX.Y.Z" and "⏱️ Uptime: ...".
-- [ ] **Tier:** ⚡ Mid
+- [x] **Tier:** ⚡ Mid
 - [x] [Feature] [Bot] Add regression test for `/version` command [Ref: docs/specs/telegram_version_command_spec.md] [Difficulty: 2] - COMPLETED 2026-02-20
 - [x] **Summary:** Ensures the /version command returns the expected format and doesn't crash.
 - [x] **File(s):** scripts/bot/bot.test.js
 - [x] **Action:** Add a test case that mocks the message and asserts the response.
 - [x] **Signature:** `await test('/version command returns version and uptime', ...)`
 - [x] **Scope Boundary:** ONLY modify bot.test.js.
-- [ ] **Dependencies:** None
-- [ ] **Parallel:** Yes
+- [x] **Dependencies:** None
+- [x] **Parallel:** Yes
 - [x] **Acceptance:** `npm test` passes.
-- [ ] **Tier:** ⚡ Mid
+- [x] **Tier:** ⚡ Mid
 - [x] [Feature] [Bot] Implement `/restart` command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3] - COMPLETED 2026-02-20
-  - **Summary:** Telegram command to kill watcher, clear stale lock, spawn new watcher, report diagnostics.
-  - **File(s):** scripts/bot/bot.js (new handler)
-  - **Action:** Add `/restart` handler with watcher kill, lock cleanup, log tail, watcher spawn.
-  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
-  - **Acceptance:** `npm test` passes; `/restart` in Telegram restarts watcher.
+- [x] **Summary:** Telegram command to kill watcher, clear stale lock, spawn new watcher, report diagnostics.
+- [x] **File(s):** scripts/bot/bot.js (new handler)
+- [x] **Action:** Add `/restart` handler with watcher kill, lock cleanup, log tail, watcher spawn.
+- [x] **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh.
+- [x] **Acceptance:** `npm test` passes; `/restart` in Telegram restarts watcher.
 - [x] [Feature] [Testing] Add `/restart` regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2] - COMPLETED 2026-02-20
-  - **Summary:** Tests for restart handler, lock cleanup, BOT_COMMANDS update.
-  - **File(s):** scripts/bot/bot.test.js
-  - **Dependencies:** Requires `/restart` command.
-  - **Acceptance:** `npm test` passes with new tests.
+- [x] **Summary:** Tests for restart handler, lock cleanup, BOT_COMMANDS update.
+- [x] **File(s):** scripts/bot/bot.test.js
+- [x] **Dependencies:** Requires `/restart` command.
+- [x] **Acceptance:** `npm test` passes with new tests.
 - [x] [Feature] [Infra] Create external watchdog script + launchd plist [Ref: docs/specs/self_healing_spec.md] [Difficulty: 4] - COMPLETED 2026-02-20
-  - **Summary:** Independent process that monitors bot + watcher PIDs, auto-restarts on crash.
-  - **File(s):** scripts/watchdog.sh (NEW), com.antigravity.watchdog.plist (NEW)
-  - **Action:** Create health check script with restart loop guard (max 3/hour). Create launchd plist.
-  - **Scope Boundary:** ONLY create new files. Do NOT modify existing scripts.
-  - **Acceptance:** `bash -n watchdog.sh` passes.
+- [x] **Summary:** Independent process that monitors bot + watcher PIDs, auto-restarts on crash.
+- [x] **File(s):** scripts/watchdog.sh (NEW), com.antigravity.watchdog.plist (NEW)
+- [x] **Action:** Create health check script with restart loop guard (max 3/hour). Create launchd plist.
+- [x] **Scope Boundary:** ONLY create new files. Do NOT modify existing scripts.
+- [x] **Acceptance:** `bash -n watchdog.sh` passes.
 - [x] [Feature] [Bot] Add `/watchdog` status command + tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3] - COMPLETED 2026-02-20
-  - **Summary:** Shows watchdog status (last restart, restart count, uptime) in Telegram.
-  - **File(s):** scripts/bot/bot.js, scripts/bot/bot.test.js
-  - **Dependencies:** Requires watchdog script.
-  - **Acceptance:** `npm test` passes; `/watchdog` shows status in Telegram.
+- [x] **Summary:** Shows watchdog status (last restart, restart count, uptime) in Telegram.
+- [x] **File(s):** scripts/bot/bot.js, scripts/bot/bot.test.js
+- [x] **Dependencies:** Requires watchdog script.
+- [x] **Acceptance:** `npm test` passes; `/watchdog` shows status in Telegram.
 - [x] [Feature] [Infra] Add LLM diagnosis trigger to watchdog [Ref: docs/specs/self_healing_spec.md] [Difficulty: 5] - COMPLETED 2026-02-20
-  - **Summary:** Watchdog detects ≥2 crashes/hour, spawns Kilo CLI to diagnose from logs, reports to Telegram.
-  - **File(s):** scripts/watchdog.sh (existing), scripts/diagnose_prompt.txt (NEW)
-  - **Action:** Add crash count check, build diagnosis prompt from log tails, spawn `kilo run --auto`.
-  - **Scope Boundary:** ONLY modify watchdog.sh and create diagnose_prompt.txt. Do NOT touch bot.js.
-  - **Acceptance:** `bash -n watchdog.sh` passes; diagnosis trigger logic present.
+- [x] **Summary:** Watchdog detects ≥2 crashes/hour, spawns Kilo CLI to diagnose from logs, reports to Telegram.
+- [x] **File(s):** scripts/watchdog.sh (existing), scripts/diagnose_prompt.txt (NEW)
+- [x] **Action:** Add crash count check, build diagnosis prompt from log tails, spawn `kilo run --auto`.
+- [x] **Scope Boundary:** ONLY modify watchdog.sh and create diagnose_prompt.txt. Do NOT touch bot.js.
+- [x] **Acceptance:** `bash -n watchdog.sh` passes; diagnosis trigger logic present.
 - [x] [Feature] [Bot] Add `/diagnose` manual trigger command [Ref: docs/specs/self_healing_spec.md] [Difficulty: 3] - COMPLETED 2026-02-20
-  - **Summary:** Telegram command to manually trigger LLM diagnosis from watcher + bot logs.
-  - **File(s):** scripts/bot/bot.js (new handler)
-  - **Action:** Add `/diagnose` handler: collects last 30 lines of logs, writes diagnosis prompt to inbox.
-  - **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh or watchdog.sh.
-  - **Acceptance:** `npm test` passes; `/diagnose` in Telegram triggers LLM analysis.
+- [x] **Summary:** Telegram command to manually trigger LLM diagnosis from watcher + bot logs.
+- [x] **File(s):** scripts/bot/bot.js (new handler)
+- [x] **Action:** Add `/diagnose` handler: collects last 30 lines of logs, writes diagnosis prompt to inbox.
+- [x] **Scope Boundary:** ONLY modify bot.js. Do NOT touch watcher.sh or watchdog.sh.
+- [x] **Acceptance:** `npm test` passes; `/diagnose` in Telegram triggers LLM analysis.
 - [x] [Feature] [Testing] Add Phase 3 diagnosis regression tests [Ref: docs/specs/self_healing_spec.md] [Difficulty: 2] - COMPLETED 2026-02-20
-  - **Summary:** Tests for /diagnose handler, BOT_COMMANDS, watchdog diagnosis trigger, dedup guard.
-  - **File(s):** scripts/bot/bot.test.js
-  - **Dependencies:** Requires diagnosis trigger + /diagnose command.
-  - **Acceptance:** `npm test` passes with new tests.
+- [x] **Summary:** Tests for /diagnose handler, BOT_COMMANDS, watchdog diagnosis trigger, dedup guard.
+- [x] **File(s):** scripts/bot/bot.test.js
+- [x] **Dependencies:** Requires diagnosis trigger + /diagnose command.
+- [x] **Acceptance:** `npm test` passes with new tests.
 - [x] [Security] [Watcher] Quote `$MODEL_FLAG` or add model allowlist validation [Difficulty: 1] - COMPLETED 2026-02-20
 - [x] [Bug] [Watcher] Fix false-positive rate limit detection — check exit code not stderr grep [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 2] - COMPLETED 2026-02-20
 - [x] [Feature] [Hooks] Create BeforeAgent hook script for inbox injection [Ref: docs/specs/hook_bridge_spec.md] [Difficulty: 3] - COMPLETED 2026-02-15
