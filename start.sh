@@ -100,7 +100,7 @@ case "${1:-start}" in
 
         # Start bot
         echo "  🤖 Starting bot..."
-        cd "$BOT_DIR" && node bot.js >> "$LOG_DIR/bot.log" 2>&1 &
+        cd "$BOT_DIR" && node bot_v2.js >> "$LOG_DIR/bot.log" 2>&1 &
         BOT_PID=$!
         cd "$SCRIPT_DIR"
 
