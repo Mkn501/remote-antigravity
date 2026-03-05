@@ -51,6 +51,12 @@
 ## 009: Project-Aware Dispatch (2026-03-01)
 - **Decision**: Add `project` field to `wa_dispatch.json` at plan-approval; watcher reads it for dispatch execution instead of `state.activeProject`.
 - **Rationale**: Dispatch tasks belong to the project they were planned for, not whichever project is currently active. Discovered when 3 dispatch runs silently committed nothing — CLI was in the wrong repo.
-- **Outcome**: Pending implementation (see `docs/specs/multi_project_routing_fix_spec.md`).
+- **Outcome**: Implemented 2026-03-05. 4 tasks, 156 tests pass.
 - **T&E**: [Retrospective](../docs/retrospectives/2026-03-01_multi_project_dispatch_routing_bug.md)
 - **Key Lesson**: Dispatch files must be self-contained — carry all routing info needed to execute, never rely on transient state.
+
+## 010: Submodule-Aware Commits (2026-03-05)
+- **Decision**: Watcher detects git submodules at runtime and commits inside-out (submodule first, then outer repo).
+- **Rationale**: Zokai-station is a submodule at `core/` inside Zokai-internal. Without this, code changes in `core/` were uncommitted in the submodule's git history — only the pointer changed in the outer repo.
+- **Outcome**: Implemented. 5 tasks, `commit_with_submodules()` + `setup_submodule_branches()` added to `watcher.sh`. E2E verified via Telegram.
+- **Key Lesson**: Use `${VAR:-}` for optional bash function args — `set -u` (strict mode) crashes on unset variables even when the value is intentionally empty.
