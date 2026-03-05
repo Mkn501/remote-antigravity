@@ -252,7 +252,9 @@ const PLATFORM_MODELS = {
         { id: 'gemini-2.0-flash-lite', label: '🆓 Flash Lite' }
     ],
     'kilo': [
-        { id: 'openrouter/z-ai/glm-5', label: '🧠 GLM-5' },
+        { id: 'anthropic/claude-sonnet-4-6', label: '🧠 Claude Sonnet 4.6' },
+        { id: 'anthropic/claude-opus-4-6-thinking', label: '🧠 Claude Opus 4.6' },
+        { id: 'openrouter/z-ai/glm-5', label: '⚡ GLM-5' },
         { id: 'openrouter/minimax/minimax-m2.5', label: '⚡ MiniMax M2.5' },
         { id: 'openrouter/z-ai/glm-4.7-flash', label: '🆓 GLM-4.7 Flash' }
     ],
@@ -280,9 +282,9 @@ const TIER_DEFAULTS = {
         'free': { platform: 'gemini', model: 'gemini-2.0-flash-lite' }
     },
     kilo: {
-        'top': { platform: 'kilo', model: 'openrouter/minimax/minimax-m2.5' },
+        'top': { platform: 'kilo', model: 'anthropic/claude-sonnet-4-6' },
         'mid': { platform: 'kilo', model: 'openrouter/minimax/minimax-m2.5' },
-        'free': { platform: 'kilo', model: 'openrouter/z-ai/glm-5' }
+        'free': { platform: 'kilo', model: 'openrouter/z-ai/glm-4.7-flash' }
     }
 };
 

@@ -6,30 +6,34 @@
 
 ## To Do
 
+- [ ] [Infra] Add antigravity-claude-proxy lifecycle to start.sh (start/stop/status) [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 3]
+- [ ] [Infra] Create Kilo CLI opencode.json with Anthropic provider → localhost:8080 [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 2]
+- [ ] [Feature] [Bot] Add Claude model options to /model when backend=kilo [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 4]
+- [ ] [Feature] E2E validation: Telegram → Kilo CLI → Claude via proxy → commit [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 5]
 - [ ] [Bug] [Routing] Add `project` to execution plan in watcher plan-creation [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
-- [ ]   **Summary:** Stamp the executionPlan in state.json with the active project path at plan-creation time.
-- [ ]   **File(s):** scripts/watcher.sh (lines ~588)
-- [ ]   **Action:** Modify — add `'project': sys.argv[4]` to the Python block + pass `$ACTIVE_PROJECT` as 4th arg.
-- [ ]   **Dependencies:** None
-- [ ]   **Acceptance:** `jq '.executionPlan.project' .gemini/state.json` returns active project path after /plan_feature.
+- [ ] **Summary:** Stamp the executionPlan in state.json with the active project path at plan-creation time.
+- [ ] **File(s):** scripts/watcher.sh (lines ~588)
+- [ ] **Action:** Modify — add `'project': sys.argv[4]` to the Python block + pass `$ACTIVE_PROJECT` as 4th arg.
+- [ ] **Dependencies:** None
+- [ ] **Acceptance:** `jq '.executionPlan.project' .gemini/state.json` returns active project path after /plan_feature.
 - [ ] [Bug] [Routing] Add `project` to `writeDispatch()` in bot [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 1]
-- [ ]   **Summary:** Include the originating project path in wa_dispatch.json when plan is approved.
-- [ ]   **File(s):** scripts/bot/bot_v2.js (lines ~350-364)
-- [ ]   **Action:** Modify — add `project: plan.project || getState().activeProject` to dispatch object.
-- [ ]   **Dependencies:** None
-- [ ]   **Acceptance:** `jq '.project' .gemini/wa_dispatch.json` returns project path after plan approval.
+- [ ] **Summary:** Include the originating project path in wa_dispatch.json when plan is approved.
+- [ ] **File(s):** scripts/bot/bot_v2.js (lines ~350-364)
+- [ ] **Action:** Modify — add `project: plan.project || getState().activeProject` to dispatch object.
+- [ ] **Dependencies:** None
+- [ ] **Acceptance:** `jq '.project' .gemini/wa_dispatch.json` returns project path after plan approval.
 - [ ] [Bug] [Routing] Use dispatch `project` in watcher dispatch execution [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
-- [ ]   **Summary:** Read project from wa_dispatch.json instead of state.json for dispatch task execution.
-- [ ]   **File(s):** scripts/watcher.sh (lines ~697-701)
-- [ ]   **Action:** Modify — read `project` from dispatch file with fallback to state.activeProject.
-- [ ]   **Dependencies:** Requires Task 1+2 complete
-- [ ]   **Acceptance:** Dispatch runs tasks in the project from wa_dispatch.json even if state.activeProject has changed.
+- [ ] **Summary:** Read project from wa_dispatch.json instead of state.json for dispatch task execution.
+- [ ] **File(s):** scripts/watcher.sh (lines ~697-701)
+- [ ] **Action:** Modify — read `project` from dispatch file with fallback to state.activeProject.
+- [ ] **Dependencies:** Requires Task 1+2 complete
+- [ ] **Acceptance:** Dispatch runs tasks in the project from wa_dispatch.json even if state.activeProject has changed.
 - [ ] [Bug] [Routing] Add regression tests for project-aware dispatch [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
-- [ ]   **Summary:** 2 new tests: writeDispatch includes project field, writeDispatch falls back when plan.project missing.
-- [ ]   **File(s):** scripts/bot/bot_test_v2.js
-- [ ]   **Action:** Add tests at end of Execution Plan test section.
-- [ ]   **Dependencies:** Requires Task 2 complete
-- [ ]   **Acceptance:** `node scripts/bot/bot_test_v2.js` passes with increased test count.
+- [ ] **Summary:** 2 new tests: writeDispatch includes project field, writeDispatch falls back when plan.project missing.
+- [ ] **File(s):** scripts/bot/bot_test_v2.js
+- [ ] **Action:** Add tests at end of Execution Plan test section.
+- [ ] **Dependencies:** Requires Task 2 complete
+- [ ] **Acceptance:** `node scripts/bot/bot_test_v2.js` passes with increased test count.
 - [ ] ->
 - [ ] [Feature] [Bot] Implement `/ping` command [Ref: docs/specs/ping_command_spec.md] [Difficulty: 1]
 - [ ] **Summary:** Adds a simple connectivity check command that replies "pong".

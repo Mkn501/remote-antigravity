@@ -161,7 +161,8 @@ run_agent() {
             KILO_ARGS+=("$prompt")
             (
                 cd "$project_dir" || exit 1
-                if kilo "${KILO_ARGS[@]}" >"$AGENT_STDOUT_FILE" 2>"$AGENT_STDERR_FILE"; then
+                # kilo run requires a TTY for output — script provides a pseudo-terminal
+                if script -q /dev/null kilo "${KILO_ARGS[@]}" >"$AGENT_STDOUT_FILE" 2>"$AGENT_STDERR_FILE"; then
                     echo 0 > "$AGENT_EXIT_CODE_FILE"
                 else
                     echo $? > "$AGENT_EXIT_CODE_FILE"

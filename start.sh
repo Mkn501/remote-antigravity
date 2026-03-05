@@ -31,6 +31,11 @@ status() {
     else
         echo -e "  👁️  Watcher:  ${RED}Stopped${NC}"
     fi
+    if command -v acc &> /dev/null && acc status 2>/dev/null | grep -q "active"; then
+        echo -e "  🛸 Proxy:    ${GREEN}Running${NC}"
+    else
+        echo -e "  🛸 Proxy:    ${YELLOW}Not running${NC} (Claude models unavailable)"
+    fi
     echo ""
 }
 
@@ -38,6 +43,10 @@ stop_all() {
     echo "🛑 Stopping services..."
     pkill -f "bot.js" 2>/dev/null && echo "  ✅ Bot stopped" || echo "  ⚪ Bot was not running"
     pkill -f "watcher.sh" 2>/dev/null && echo "  ✅ Watcher stopped" || echo "  ⚪ Watcher was not running"
+    # Stop antigravity-claude-proxy if running
+    if command -v acc &> /dev/null; then
+        acc stop 2>/dev/null && echo "  ✅ Proxy stopped" || echo "  ⚪ Proxy was not running"
+    fi
     # Clean up stale lock to prevent false alerts on next start
     rm -f "$LOG_DIR/wa_session.lock" 2>/dev/null
 }
@@ -94,6 +103,18 @@ case "${1:-start}" in
         cd "$BOT_DIR" && node bot.js >> "$LOG_DIR/bot.log" 2>&1 &
         BOT_PID=$!
         cd "$SCRIPT_DIR"
+
+        # Start antigravity-claude-proxy (for Kilo CLI + Claude models)
+        if command -v acc &> /dev/null; then
+            if ! acc status 2>/dev/null | grep -q "active"; then
+                echo "  🛸 Starting antigravity-claude-proxy..."
+                PORT=3456 acc start 2>/dev/null
+            else
+                echo -e "  🛸 Proxy:    ${GREEN}Already running${NC}"
+            fi
+        else
+            echo -e "  ${YELLOW}⚠️  antigravity-claude-proxy not installed (Claude models unavailable)${NC}"
+        fi
 
         # Start watcher
         echo "  👁️  Starting watcher..."
