@@ -95,6 +95,7 @@
 - [ ] [Bug] [Bot] Use `getState()` consistently — replace raw JSON.parse in `/autofix` (MAINT-3, P1) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 1]
 - [ ] [Bug] [Testing] Fix stale BOT_COMMANDS in test (8 vs 18 actual) [Ref: docs/specs/bot_test_refactoring_spec.md] [Difficulty: 1]
 - [ ] [Bug] [Testing] Fix atomicWrite divergence in bot.test.js [Ref: docs/specs/bot_test_refactoring_spec.md] [Difficulty: 1]
+- [ ] [Feature] Integrate Claude Code CLI as a new backend option (alongside Gemini CLI, Kilo CLI, Jules). Add `claude` case to watcher run_agent(), /backend button in bot, and model list. Uses Antigravity subscription directly. [Difficulty: 5]
 
 ## Backlog
 
