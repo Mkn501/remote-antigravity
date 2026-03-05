@@ -60,3 +60,10 @@
 - **Rationale**: Zokai-station is a submodule at `core/` inside Zokai-internal. Without this, code changes in `core/` were uncommitted in the submodule's git history — only the pointer changed in the outer repo.
 - **Outcome**: Implemented. 5 tasks, `commit_with_submodules()` + `setup_submodule_branches()` added to `watcher.sh`. E2E verified via Telegram.
 - **Key Lesson**: Use `${VAR:-}` for optional bash function args — `set -u` (strict mode) crashes on unset variables even when the value is intentionally empty.
+
+## 011: Kilo CLI + Antigravity Claude Proxy (2026-03-05)
+- **Decision**: Route Kilo CLI Anthropic requests through `antigravity-claude-proxy` on localhost:3456, using existing Antigravity subscription for Claude model access.
+- **Rationale**: User already pays for Antigravity subscription (ULTRA tier) which includes Claude models. No separate Anthropic API key needed. Proxy translates Anthropic API → Antigravity Cloud.
+- **Outcome**: Implemented. Claude Sonnet 4.6 + Opus 4.6 available via Telegram `/model`. Auto-starts with `./start.sh`. `kilo run` needs TTY wrapper (`script -q /dev/null`).
+- **T&E**: [Retrospective](../docs/retrospectives/2026-03-05_kilo_cli_antigravity_claude_proxy.md)
+- **Key Lesson**: Kilo CLI requires a pseudo-terminal for output — `script -q /dev/null` provides one. Also: always verify installed vs. latest CLI versions (was 6 major versions behind).

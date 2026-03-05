@@ -9,7 +9,6 @@
 - [ ] [Infra] Add antigravity-claude-proxy lifecycle to start.sh (start/stop/status) [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 3]
 - [ ] [Infra] Create Kilo CLI opencode.json with Anthropic provider → localhost:8080 [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 2]
 - [ ] [Feature] [Bot] Add Claude model options to /model when backend=kilo [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 4]
-- [ ] [Feature] E2E validation: Telegram → Kilo CLI → Claude via proxy → commit [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 5]
 - [ ] [Bug] [Routing] Add `project` to execution plan in watcher plan-creation [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
 - [ ] **Summary:** Stamp the executionPlan in state.json with the active project path at plan-creation time.
 - [ ] **File(s):** scripts/watcher.sh (lines ~588)
@@ -211,6 +210,7 @@
 - [x] [Security] [Bot] Add CHAT_ID check to callback_query handler [Difficulty: 1] - COMPLETED 2026-02-20
 - [x] [Docs] [Bot] Critical review specs: bot_refactoring_spec.md + bot_test_refactoring_spec.md - COMPLETED 2026-02-20
 - [x] [Infra] [Git] Merge telegram/active, delete destructive session branch, cleanup remotes - COMPLETED 2026-02-20
+- [x] [Feature] E2E validation: Telegram → Kilo CLI → Claude via proxy → commit [Ref: docs/specs/kilo_antigravity_claude_proxy_spec.md] [Difficulty: 5]
 
 ## Deleted
 

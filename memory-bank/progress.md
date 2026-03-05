@@ -23,6 +23,7 @@
 - [x] **M15: Builder-Ready Planning (Phase 1)** — Work order format, execution guards, approval gate, spec template v2.0, real-feature validation
 - [x] **M16: Self-Healing & Code Review** — /restart, watchdog, /diagnose, /autofix (Phases 1-4), diagnosis pipeline, critical review specs for bot.js + bot.test.js. 151-test regression suite.
 - [x] **M17: Multi-Project Routing & Submodule Commits** — Project-aware dispatch (P-005), submodule-aware commits (P-006). 9 tasks, 156-test regression suite. E2E verified via Telegram.
+- [x] **M18: Kilo CLI + Antigravity Claude Proxy** — Claude models (Sonnet 4.6, Opus 4.6) via Antigravity subscription. Kilo CLI v7.0.38 upgrade, TTY fix, proxy lifecycle in start.sh. E2E validated via Telegram.
 
 ## Known Risks
 - `--yolo` mode auto-approves all Gemini tool calls — accepted for single-user personal use.
@@ -35,7 +36,8 @@
 ## Recent Milestones
 | Date | Milestone |
 |------|-----------|
-| 2026-03-05 | Implemented P-005 (project-aware dispatch, 4 tasks) + P-006 (submodule-aware commits, 5 tasks). E2E verified via Telegram. 156 tests. |
+| 2026-03-05 PM | Kilo CLI + Antigravity Claude Proxy integration. Claude Sonnet 4.6 + Opus 4.6 via proxy on :3456. Upgraded Kilo v1→v7. TTY fix. E2E validated. |
+| 2026-03-05 AM | Implemented P-005 (project-aware dispatch, 4 tasks) + P-006 (submodule-aware commits, 5 tasks). E2E verified via Telegram. 156 tests. |
 | 2026-03-01 | Investigated dispatch routing bug; wrote spec + 4 work orders (1.75/10 difficulty); P-005 pattern added |
 
 <details><summary>Completed Phases (Archive)</summary>

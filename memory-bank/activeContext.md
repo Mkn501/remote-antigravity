@@ -1,30 +1,35 @@
 # Active Context
 
 ## Next Session Goal
-- [ ] Continue dogfooding the submodule-aware watcher via Telegram on real station tasks
-- [ ] Consider bot.js refactoring (P0: duplicate `/kill` handler, broad `pkill`)
+- [ ] Dogfood Claude via Telegram on a real station task (full E2E with code changes)
+- [ ] Consider bot.js/bot_v2.js consolidation (bot_refactoring_spec.md)
+- [ ] Configure Tavily MCP for Kilo CLI web search gap
 
 ## Current Focus
-- [x] **Session 2026-03-05**: Multi-project routing fix + submodule-aware commits.
-- **Status**: All 9 tasks implemented and verified E2E via Telegram. 156/156 tests pass.
-  - P-005 Project-Aware Dispatch: 4 tasks (watcher stamps + reads `project` in dispatch)
-  - P-006 Submodule-Aware Commit: 5 tasks (inside-out commit, mirrored branches)
-  - Fixed unbound `SESSION_NAME` variable bug during live testing
+- [x] **Session 2026-03-05 (PM)**: Kilo CLI + Antigravity Claude Proxy integration.
+- **Status**: All 4 tasks complete. E2E validated via Telegram.
+  - Installed `antigravity-claude-proxy` on port 3456 (Google account linked, ULTRA tier)
+  - Upgraded Kilo CLI v1.0.23 → v7.0.38 (old version had `kilo run` hang bug)
+  - Fixed TTY requirement: `script -q /dev/null kilo run ...` in watcher.sh
+  - Added Claude Sonnet 4.6 + Opus 4.6 to bot PLATFORM_MODELS
+  - Proxy lifecycle wired into start.sh (auto start/stop/status)
+  - Fixed start.sh: was launching `bot.js` instead of `bot_v2.js`
 
 ## Open Work Items
 - P0: Duplicate `/kill` handler, broad `pkill`, undefined `PROJECT_DIR` (bot_refactoring_spec.md)
+- P0: Consolidate bot.js / bot_v2.js into single file
 - P1: Shell injection fix, consistent state access, duplicate import
-- P3: bot.js modular split → then test refactoring
+- Feature: Tavily MCP for Kilo CLI web search
 - Feature: Parallel Dispatch (To Do)
-- Reliability: Flash + Sandbox replace errors (Research)
 
 ## Recent Changes
-- Implemented project-aware dispatch (P-005): `watcher.sh` stamps originating project, `bot_v2.js` carries it in dispatch, watcher reads from dispatch instead of state.
-- Implemented submodule-aware commits (P-006): `commit_with_submodules()` and `setup_submodule_branches()` handle nested repos like `core/`.
-- Both features verified E2E via Telegram on station (submodule) and main (no submodule) projects.
+- Kilo CLI + Antigravity Claude Proxy integration: Claude models accessible from Telegram via `/backend kilo` + `/model`.
+- Proxy auto-starts on port 3456 with `./start.sh start`, auto-stops with `./start.sh stop`.
+- `kilo run --auto` requires TTY — wrapped with `script -q /dev/null` in watcher.
 
 <details><summary>Older Sessions</summary>
 
+- **2026-03-05 (AM)**: Multi-project routing fix + submodule-aware commits. 9 tasks, 156 tests.
 - **2026-03-01**: Investigated dispatch routing bug; wrote spec + 4 work orders.
 - **2026-02-20 (PM)**: Merge & Code Review. Created refactoring specs for bot.js + bot.test.js.
 - **2026-02-20 (AM)**: Self-healing stabilization (diagnosis, auto-fix, log rotation, branch guards).
@@ -50,3 +55,5 @@
 | 11 | **Monolithic files are AI-hostile** — Gemini CLI deleted Phase 4 handlers because it couldn't reason about 1,373-line bot.js. |
 | 12 | **Test helpers must never diverge from production** — bot.test.js had its own `atomicWrite()` that did double-write. |
 | 13 | **Use `${VAR:-}` for optional shell variables** — `set -u` (strict mode) causes crashes on unset vars in function args. |
+| 14 | **Kilo CLI requires TTY for output** — `kilo run --auto` silently hangs without a pseudo-terminal. Wrap with `script -q /dev/null`. |
+| 15 | **Always check installed vs. latest CLI versions** — Kilo CLI was 6 major versions behind, causing silent config and output failures. |

@@ -2,7 +2,7 @@
 
 ## Tag Vocabulary
 
-`docker` · `mcp` · `cloud` · `config` · `network` · `testing` · `security` · `regression` · `hooks` · `whatsapp` · `telegram` · `gemini-cli`
+`docker` · `mcp` · `cloud` · `config` · `network` · `testing` · `security` · `regression` · `hooks` · `whatsapp` · `telegram` · `gemini-cli` · `kilo` · `anthropic` · `proxy`
 
 > Add new tags as needed. Keep vocabulary concise — prefer existing tags over new ones.
 
@@ -15,3 +15,4 @@
 | 2026-02-18 | [telegram_plan_mode_and_model_reliability](2026-02-18_telegram_plan_mode_and_model_reliability.md) | `telegram`, `regression`, `gemini-cli` | Callback data must match exactly between sender and handler — string mismatch causes silent UI failures |
 | 2026-02-17 | [kilo_cli_backend_abstraction](2026-02-17_kilo_cli_backend_abstraction.md) | `gemini-cli`, `testing`, `regression`, `kilo` | Never trust AI research without web search — always enforce Google Search for research tasks |
 | 2026-03-01 | [multi_project_dispatch_routing_bug](2026-03-01_multi_project_dispatch_routing_bug.md) | `gemini-cli`, `multi-project`, `dispatch`, `routing` | Dispatch files must be self-contained — carry originating project path, not rely on transient state |
+| 2026-03-05 | [kilo_cli_antigravity_claude_proxy](2026-03-05_kilo_cli_antigravity_claude_proxy.md) | `kilo`, `anthropic`, `proxy`, `config` | Kilo CLI requires TTY for output — always wrap with `script -q /dev/null` in headless contexts |
