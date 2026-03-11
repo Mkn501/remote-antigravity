@@ -1,0 +1,16 @@
+👁️  Inbox watcher started
+   HQ:      /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity
+   Inbox:   /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini/wa_inbox.json
+   State:   /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini/state.json
+
+📬 19:01:40 | 1 msg(s) → Launching in: zokai station
+Your branch is up to date with 'origin/main'.
+🔄 Continuing on branch: telegram/active
+Unstaged changes after reset:
+M	.gemini/session_history.txt
+[telegram/active 8e56b87] telegram: session 20260311-190235
+ 1 file changed, 43 insertions(+)
+💾 Changes committed on: telegram/active
+✅ 19:02:35 | Session complete — cooling down 10s
+👋 Watcher stopped
+/Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/scripts/watcher.sh: line 61: GEMINI_DIR: unbound variable

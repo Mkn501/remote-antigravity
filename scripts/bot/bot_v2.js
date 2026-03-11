@@ -491,6 +491,14 @@ bot.on('callback_query', async (query) => {
 
         updateState(s => s.activeProject = state.projects[name]);
 
+        // Clear stale session files from new project to prevent context leakage
+        const newProjectDir = state.projects[name];
+        const dotGemini = resolve(newProjectDir, '.gemini');
+        for (const staleFile of ['session_history.txt', 'telegram_reply.txt']) {
+            const fp = resolve(dotGemini, staleFile);
+            try { if (existsSync(fp)) unlinkSync(fp); } catch { /* ignore */ }
+        }
+
         await bot.answerCallbackQuery(query.id, { text: `Switched to ${name}` });
         await bot.editMessageText(`📂 Switched to: ${name}`, { chat_id: chatId, message_id: msgId });
         console.log(`📂 ${new Date().toISOString()} | Project → ${name}`);

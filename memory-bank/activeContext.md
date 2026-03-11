@@ -1,19 +1,16 @@
 # Active Context
 
 ## Next Session Goal
-- [ ] Dogfood Claude via Telegram on a real station task (full E2E with code changes)
-- [ ] Consider bot.js/bot_v2.js consolidation (bot_refactoring_spec.md)
-- [ ] Configure Tavily MCP for Kilo CLI web search gap
+- [ ] Implement Session-Persistent Kilo Architecture — start with WO-SES-0 (agent config sync) then S-SES-1 (spike --session + --agent). Spec: `docs/specs/kilo_session_persistent_spec.md`
 
 ## Current Focus
-- [x] **Session 2026-03-05 (PM)**: Kilo CLI + Antigravity Claude Proxy integration.
-- **Status**: All 4 tasks complete. E2E validated via Telegram.
-  - Installed `antigravity-claude-proxy` on port 3456 (Google account linked, ULTRA tier)
-  - Upgraded Kilo CLI v1.0.23 → v7.0.38 (old version had `kilo run` hang bug)
-  - Fixed TTY requirement: `script -q /dev/null kilo run ...` in watcher.sh
-  - Added Claude Sonnet 4.6 + Opus 4.6 to bot PLATFORM_MODELS
-  - Proxy lifecycle wired into start.sh (auto start/stop/status)
-  - Fixed start.sh: was launching `bot.js` instead of `bot_v2.js`
+- [x] **Session 2026-03-11**: Kilo CLI session persistence discovery & architecture spec.
+  - Fixed watcher.sh model routing: `/plan_feature` now uses PLANNING_MODEL, not SELECTED_MODEL
+  - Upgraded Kilo CLI 7.0.43 → 7.0.46
+  - Validated session resume: `--continue`, `--session <id>`, `--format json` all work
+  - Discovered template SOP already defines 4 agents (`sop-coordinator`, `sop-planner`, `sop-developer`, `sop-auditor`)
+  - Created SOP-compliant spec with 9 work orders, dependency graph, testing strategy
+  - Added Gemini backend compatibility guards to all work orders
 
 ## Open Work Items
 - P0: Duplicate `/kill` handler, broad `pkill`, undefined `PROJECT_DIR` (bot_refactoring_spec.md)
@@ -23,12 +20,14 @@
 - Feature: Parallel Dispatch (To Do)
 
 ## Recent Changes
-- Kilo CLI + Antigravity Claude Proxy integration: Claude models accessible from Telegram via `/backend kilo` + `/model`.
-- Proxy auto-starts on port 3456 with `./start.sh start`, auto-stops with `./start.sh stop`.
-- `kilo run --auto` requires TTY — wrapped with `script -q /dev/null` in watcher.
+- Session-persistent Kilo architecture spec: 9 work orders, SOP-compliant, ready for implementation
+- Kilo CLI upgraded to 7.0.46 with `--session`, `--continue`, `--format json`, `--agent` support
+- Watcher model routing fix: `/plan_feature` always uses PLANNING_MODEL
+- Discovered template SOP agents align with Kilo's native `--agent` system
 
 <details><summary>Older Sessions</summary>
 
+- **2026-03-05 (PM)**: Kilo CLI + Antigravity Claude Proxy. Claude models via proxy :3456. Kilo v1→v7. TTY fix. E2E validated.
 - **2026-03-05 (AM)**: Multi-project routing fix + submodule-aware commits. 9 tasks, 156 tests.
 - **2026-03-01**: Investigated dispatch routing bug; wrote spec + 4 work orders.
 - **2026-02-20 (PM)**: Merge & Code Review. Created refactoring specs for bot.js + bot.test.js.

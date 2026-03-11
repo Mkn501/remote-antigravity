@@ -1022,9 +1022,9 @@ await test('[regression] watcher sources .env for API keys', () => {
 });
 
 await test('[regression] registries.js PLATFORM_MODELS includes kilo models', () => {
-    ok(PLATFORM_MODELS.kilo.length >= 3);
-    ok(PLATFORM_MODELS.kilo.some(m => m.id.includes('glm-5')));
-    ok(PLATFORM_MODELS.kilo.some(m => m.id.includes('minimax')));
+    ok(PLATFORM_MODELS.kilo.length >= 2);
+    ok(PLATFORM_MODELS.kilo.some(m => m.id.includes('claude-opus')));
+    ok(PLATFORM_MODELS.kilo.some(m => m.id.includes('claude-sonnet')));
 });
 
 await test('[regression] registries.js has /backend command data', () => {
@@ -1035,15 +1035,15 @@ await test('[regression] registries.js has /backend command data', () => {
 await test('[regression] backend switch resets model to backend default', () => {
     const kiloModels = PLATFORM_MODELS['kilo'] || [];
     const defaultModel = kiloModels.length > 0 ? kiloModels[0].id : null;
-    ok(defaultModel.includes('openrouter/'));
+    ok(defaultModel.includes('anthropic/'), `kilo default should be anthropic, got ${defaultModel}`);
     const geminiModels = PLATFORM_MODELS['gemini'] || [];
     strictEqual(geminiModels[0].id, 'gemini-2.5-flash');
 });
 
 await test('[regression] /model shows backend-specific models', () => {
     const models = PLATFORM_MODELS['kilo'] || [];
-    strictEqual(models.length, 3);
-    ok(models.every(m => m.id.startsWith('openrouter/')));
+    ok(models.length >= 2, `kilo should have at least 2 models, got ${models.length}`);
+    ok(models.every(m => m.id.startsWith('anthropic/')), 'all kilo models should be anthropic');
 });
 
 await test('[regression] start.sh accepts kilo as alternative backend', () => {
@@ -1132,7 +1132,7 @@ await test('[e2e] TIER_DEFAULTS is backend-specific in registries.js', () => {
     ok(TIER_DEFAULTS.gemini.top);
     ok(TIER_DEFAULTS.kilo.top);
     ok(TIER_DEFAULTS.gemini.top.model.includes('gemini'));
-    ok(TIER_DEFAULTS.kilo.top.model.includes('openrouter'));
+    ok(TIER_DEFAULTS.kilo.top.model.includes('anthropic'), `kilo top should be anthropic, got ${TIER_DEFAULTS.kilo.top.model}`);
 });
 
 await test('[e2e] health check uses CENTRAL_DIR not DOT_GEMINI', () => {
@@ -1271,7 +1271,7 @@ await test('[behavioral] auto-load assigns kilo models when backend=kilo', () =>
     const tasks = JSON.parse(result);
     ok(tasks.length >= 1);
     strictEqual(tasks[0].platform, 'kilo');
-    ok(tasks[0].model.includes('openrouter/'));
+    ok(tasks[0].model.includes('anthropic/'), `kilo auto-load should assign anthropic models, got ${tasks[0].model}`);
     rmSync(mockDir, { recursive: true, force: true });
 });
 
@@ -1310,6 +1310,30 @@ await test('[behavioral] auto-load defaults to gemini when backend not set', () 
     const tasks = JSON.parse(result);
     strictEqual(tasks[0].platform, 'gemini');
     rmSync(mockDir, { recursive: true, force: true });
+});
+
+// ---- Kilo Backend E2E Fixes (Bug 1-5) ----
+console.log('\n── Regression: Kilo Backend E2E Fixes ──');
+
+await test('[regression] TIER_DEFAULTS.kilo.top uses Claude model', () => {
+    ok(TIER_DEFAULTS.kilo.top.model.includes('claude'), `kilo top tier should be Claude, got ${TIER_DEFAULTS.kilo.top.model}`);
+});
+
+await test('[regression] PLATFORM_MODELS.kilo includes Claude models', () => {
+    const kilo = PLATFORM_MODELS.kilo;
+    ok(kilo.some(m => m.id.includes('claude-sonnet')), 'should have Claude Sonnet');
+    ok(kilo.some(m => m.id.includes('claude-opus')), 'should have Claude Opus');
+});
+
+await test('[regression] watcher normalizes 3-part model IDs for Kilo', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('slash_count'), 'watcher should count slashes for model normalization');
+});
+
+await test('[regression] watcher has backend-aware routine models', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('CURRENT_BACKEND=$(get_backend)'), 'should read backend before setting routine models');
+    ok(w.includes('ROUTINE_MODEL="anthropic/claude-sonnet-4-6"'), 'kilo routine should use Claude Sonnet');
 });
 
 // ============================================================================

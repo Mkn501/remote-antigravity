@@ -128,7 +128,41 @@ else
     pass "GLM-5 responded ($(echo "$GLM_OUTPUT" | wc -c | tr -d ' ') bytes)"
 fi
 
-# --- Test 6: Watcher script syntax ---
+# --- Test 5b: Antigravity Claude Proxy health ---
+echo ""
+echo "── 5b. Antigravity Claude Proxy ──"
+
+PROXY_URL="http://localhost:3456"
+PROXY_UP=false
+
+if curl -s --max-time 3 "$PROXY_URL/v1/models" > /dev/null 2>&1; then
+    PROXY_MODELS=$(curl -s --max-time 3 "$PROXY_URL/v1/models" | jq -r '.data[].id' 2>/dev/null | tr '\n' ', ')
+    pass "proxy running at $PROXY_URL (models: ${PROXY_MODELS%, })"
+    PROXY_UP=true
+else
+    skip "proxy not running at $PROXY_URL — start with 'acc start'"
+fi
+
+# --- Test 5c: Direct Kilo CLI call (Claude Sonnet via proxy) ---
+echo ""
+echo "── 5c. Direct Kilo CLI Call (Claude Sonnet 4.6 via Proxy) ──"
+
+if [ "$PROXY_UP" = true ]; then
+    CLAUDE_OUTPUT=$(script -q /dev/null kilo run --model "anthropic/claude-sonnet-4-6" --auto "Reply with exactly: E2E_CLAUDE_OK" 2>/dev/null || echo "CLAUDE_ERROR")
+
+    if echo "$CLAUDE_OUTPUT" | grep -q "E2E_CLAUDE_OK"; then
+        pass "Claude Sonnet 4.6 responded with expected text"
+    elif echo "$CLAUDE_OUTPUT" | grep -qi "ProviderModelNotFoundError"; then
+        fail "Kilo can't find model — check opencode.json and --model format"
+    elif echo "$CLAUDE_OUTPUT" | grep -q "CLAUDE_ERROR"; then
+        fail "Claude call failed entirely"
+    else
+        pass "Claude Sonnet 4.6 responded ($(echo "$CLAUDE_OUTPUT" | wc -c | tr -d ' ') bytes)"
+    fi
+else
+    skip "Claude test skipped — proxy not running"
+fi
+
 echo ""
 echo "── 6. Watcher Script Validation ──"
 
@@ -178,8 +212,8 @@ if [ -f "$STATE_FILE" ]; then
         skip "backend = $BACKEND (not kilo — set via /backend in Telegram)"
     fi
     
-    if echo "$MODEL" | grep -q "openrouter/"; then
-        pass "model uses openrouter/ prefix ($MODEL)"
+    if echo "$MODEL" | grep -q "openrouter/\|anthropic/"; then
+        pass "model uses provider/ prefix ($MODEL)"
     else
         skip "model = $MODEL (not a kilo model)"
     fi

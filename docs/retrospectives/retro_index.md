@@ -16,3 +16,4 @@
 | 2026-02-17 | [kilo_cli_backend_abstraction](2026-02-17_kilo_cli_backend_abstraction.md) | `gemini-cli`, `testing`, `regression`, `kilo` | Never trust AI research without web search — always enforce Google Search for research tasks |
 | 2026-03-01 | [multi_project_dispatch_routing_bug](2026-03-01_multi_project_dispatch_routing_bug.md) | `gemini-cli`, `multi-project`, `dispatch`, `routing` | Dispatch files must be self-contained — carry originating project path, not rely on transient state |
 | 2026-03-05 | [kilo_cli_antigravity_claude_proxy](2026-03-05_kilo_cli_antigravity_claude_proxy.md) | `kilo`, `anthropic`, `proxy`, `config` | Kilo CLI requires TTY for output — always wrap with `script -q /dev/null` in headless contexts |
+| 2026-03-11 | [kilo_session_persistence_discovery](2026-03-11_kilo_session_persistence_discovery.md) | `kilo`, `config`, `testing` | Spike before spec — 10min validation ("Remember 42") prevented hours of spec on unvalidated assumption |

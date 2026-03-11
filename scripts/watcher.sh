@@ -155,7 +155,20 @@ run_agent() {
             write_to_outbox "🧠 Running Kilo CLI ($model)..."
             local KILO_ARGS=(run --auto)
             if [ -n "$model" ]; then
-                KILO_ARGS+=("--model" "$model")
+                # Normalize model ID for Kilo CLI (expects provider/model format)
+                # 3-part: openrouter/z-ai/glm-5 → openrouter/glm-5
+                # 2-part: anthropic/claude-sonnet-4-6 → anthropic/claude-sonnet-4-6 (unchanged)
+                # 1-part: gemini-2.5-flash → gemini-2.5-flash (unchanged)
+                local kilo_model="$model"
+                local slash_count
+                slash_count=$(echo "$model" | tr -cd '/' | wc -c | tr -d ' ')
+                if [ "$slash_count" -ge 2 ]; then
+                    # 3+ part path: keep first segment + last segment
+                    local provider="${model%%/*}"
+                    local model_name="${model##*/}"
+                    kilo_model="${provider}/${model_name}"
+                fi
+                KILO_ARGS+=("--model" "$kilo_model")
             fi
             KILO_ARGS+=(${extra_flags[@]+"${extra_flags[@]}"})
             KILO_ARGS+=("$prompt")
@@ -259,24 +272,35 @@ while true; do
                 echo "🔒 Plan mode active (from previous /plan_feature) — no code changes allowed" >&2
             fi
 
-            # Tiered model routing
-            ROUTINE_MODEL="gemini-2.5-flash"
-            PLANNING_MODEL="gemini-2.5-flash"  # Use Flash for testing speed (change to gemini-3-pro-preview for production)
-            FALLBACK_MODEL="gemini-2.5-pro"  # Pro 3 → Pro 2.5 fallback
+            # Tiered model routing (backend-aware)
+            CURRENT_BACKEND=$(get_backend)
+            case "$CURRENT_BACKEND" in
+                kilo)
+                    ROUTINE_MODEL="anthropic/claude-sonnet-4-6"
+                    PLANNING_MODEL="anthropic/claude-sonnet-4-6"
+                    FALLBACK_MODEL="anthropic/claude-sonnet-4-6"
+                    ;;
+                gemini|*)
+                    ROUTINE_MODEL="gemini-2.5-flash"
+                    PLANNING_MODEL="gemini-2.5-flash"  # Flash for testing speed
+                    FALLBACK_MODEL="gemini-2.5-pro"  # Pro 3 → Pro 2.5 fallback
+                    ;;
+            esac
             case "$USER_MESSAGES" in
                 /startup*|/shutdown*)
                     ACTIVE_MODEL="$ROUTINE_MODEL"
                     echo "⚡ Using $ROUTINE_MODEL for routine workflow" >&2
                     ;;
                 /plan_feature*|/plan*)
-                    ACTIVE_MODEL="${SELECTED_MODEL:-$PLANNING_MODEL}"
-                    echo "🧠 Using $ACTIVE_MODEL for planning workflow" >&2
+                    ACTIVE_MODEL="$PLANNING_MODEL"
+                    echo "🧠 Using $PLANNING_MODEL for planning workflow" >&2
                     ;;
                 *)
                     if [ "$IS_DIAGNOSIS" = true ]; then
                         ACTIVE_MODEL="$ROUTINE_MODEL"
                         echo "⚡ Using $ROUTINE_MODEL for diagnosis (fast + reliable)" >&2
                     elif [ "$IS_PLAN_FEATURE" = true ]; then
+                        # Plan refinement: use user-selected model (they're actively iterating)
                         ACTIVE_MODEL="${SELECTED_MODEL:-$PLANNING_MODEL}"
                         echo "🧠 Using $ACTIVE_MODEL for plan refinement" >&2
                     else
@@ -428,6 +452,10 @@ Rules for the reply file:
 - This file gets sent directly to the user's phone"
                 fi
 
+                # Create timestamp marker for spec file detection
+                # (must be before run_agent so spec files created during session are newer)
+                touch "$DOT_GEMINI/.wa_session_start"
+
                 # Run agent via backend abstraction
                 run_agent "$TELEGRAM_PROMPT" "$ACTIVE_MODEL" "$ACTIVE_PROJECT"
 
@@ -514,8 +542,10 @@ Rules for the reply file:
 
                     # /plan_feature: send spec file + auto-load execution plan
                     if [ "$IS_PLAN_FEATURE" = true ]; then
-                        # Find the newest spec file created by Gemini
-                        SPEC_FILE=$(cd "$ACTIVE_PROJECT" && find docs/specs -name "*.md" -not -name "_*" -newer .gemini/wa_inbox.json 2>/dev/null | head -1)
+                        # Find the newest spec file created during this session
+                        SPEC_MARKER="$DOT_GEMINI/.wa_session_start"
+                        SPEC_FILE=$(cd "$ACTIVE_PROJECT" && find docs/specs -name "*.md" -not -name "_*" -newer "$SPEC_MARKER" 2>/dev/null | head -1)
+                        rm -f "$SPEC_MARKER"
                         if [ -n "$SPEC_FILE" ]; then
                             # Copy as .txt for Telegram readability (.md not rendered in Telegram)
                             SPEC_BASENAME=$(basename "$SPEC_FILE" .md)
@@ -550,7 +580,7 @@ backend = cur_state.get('backend', 'gemini')
 # Backend-aware tier defaults
 TIER_MAP = {
     'gemini': {'top': ('gemini', 'gemini-2.5-pro'), 'mid': ('gemini', 'gemini-2.5-flash'), 'free': ('gemini', 'gemini-2.0-flash-lite')},
-    'kilo':   {'top': ('kilo', 'openrouter/minimax/minimax-m2.5'), 'mid': ('kilo', 'openrouter/minimax/minimax-m2.5'), 'free': ('kilo', 'openrouter/z-ai/glm-5')}
+    'kilo':   {'top': ('kilo', 'anthropic/claude-opus-4-6-thinking'), 'mid': ('kilo', 'anthropic/claude-sonnet-4-6'), 'free': ('kilo', 'anthropic/claude-sonnet-4-6')}
 }
 tier_defaults = TIER_MAP.get(backend, TIER_MAP['gemini'])
 

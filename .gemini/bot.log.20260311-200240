@@ -1,0 +1,17 @@
+🤖 wa-bridge bot started
+   📂 Default Project: /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity
+   📥 Inbox:   /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini/wa_inbox.json
+   📤 Outbox:  /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini/wa_outbox.json
+   💾 State:   /Users/mkn501/Library/CloudStorage/GoogleDrive-ngcapinv@gmail.com/Meine Ablage/remote antigravity/.gemini/state.json
+   💬 Chat ID: 8270825886
+
+🔔 Sending startup notification to chat 8270825886...
+🔔 Startup notification sent (msg_id: 1501)
+📥 2026-03-11T18:47:43.335Z | /plan_feature sse ghosts restart
+📤 2026-03-11T18:47:45.958Z | 💬 TEXT | 📥 Message received: /plan_feature sse ghosts restart
+📤 2026-03-11T18:47:46.003Z | 💬 TEXT | ⚡ Running workflow: /plan_feature
+📤 2026-03-11T18:47:46.057Z | 💬 TEXT | 🧠 Running Kilo CLI (anthropic/claude-opus-4-6-thinking)...
+📤 2026-03-11T18:59:12.304Z | 💬 TEXT | 💾 Changes committed
+📤 2026-03-11T18:59:12.375Z | 💬 TEXT | SSE Ghost Restart Fix (H37) -- Plan Complete
+
+Spec: docs/specs/sse_ghost_rest...
