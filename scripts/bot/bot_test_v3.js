@@ -1046,6 +1046,11 @@ await test('[regression] /model shows backend-specific models', () => {
     ok(models.every(m => m.id.startsWith('openrouter/')), 'all kilo models should be openrouter');
 });
 
+await test('[regression] gemini-3.1-pro-preview available in model selector', () => {
+    ok(PLATFORM_MODELS.gemini.some(m => m.id === 'gemini-3.1-pro-preview'), 'PLATFORM_MODELS.gemini should include 3.1 Pro Preview');
+    ok(MODEL_OPTIONS.some(m => m.id === 'gemini-3.1-pro-preview'), 'MODEL_OPTIONS should include 3.1 Pro Preview');
+});
+
 await test('[regression] start.sh accepts kilo as alternative backend', () => {
     const startSh = readFileSync(resolve(PROJECT_ROOT, 'start.sh'), 'utf8');
     ok(startSh.includes('kilo'));

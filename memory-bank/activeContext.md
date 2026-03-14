@@ -4,12 +4,12 @@
 - [ ] Implement Session-Persistent Kilo Architecture — start with WO-SES-0 (agent config sync) then S-SES-1 (spike --session + --agent). Spec: `docs/specs/kilo_session_persistent_spec.md`
 
 ## Current Focus
-- [x] **Session 2026-03-14**: Disabled Antigravity Claude Proxy to prevent account suspension.
+- [x] **Session 2026-03-14**: Disabled Antigravity Claude Proxy + Gemini CLI updates.
   - Removed all Anthropic/Claude models from `registries.js`, `bot_v2.js`, `watcher.sh`, `start.sh`
   - Kilo backend now uses GLM-5 (top), MiniMax M2.5 (mid), GLM-4.7 Flash (free) via OpenRouter
-  - Disabled proxy lifecycle (start/stop/status) in `start.sh`
-  - Updated 8 regression tests in `bot_test_v3.js`, removed 1 stale test
-  - All 160 tests pass
+  - Added `gemini-3.1-pro-preview` to model selector (registries.js + bot_v2.js)
+  - Researched Gemini CLI new features → 4 backlog tasks (session resume, multi-dir, plan mode, new model)
+  - All 161 tests pass
 
 ## Open Work Items
 - P0: Duplicate `/kill` handler, broad `pkill`, undefined `PROJECT_DIR` (bot_refactoring_spec.md)
@@ -21,8 +21,9 @@
 ## Recent Changes
 - Antigravity Claude Proxy permanently disabled — account suspension risk
 - Kilo models switched to OpenRouter-only: GLM-5, MiniMax M2.5, GLM-4.7 Flash
-- `start.sh` proxy lifecycle commented out
-- Stale `slash_count` regression test removed
+- Added `gemini-3.1-pro-preview` to Gemini model selector
+- Gemini CLI v0.33.1 confirmed latest; researched --resume, --include-directories, plan mode
+- 4 new backlog tasks for Gemini CLI feature adoption
 
 <details><summary>Older Sessions</summary>
 

@@ -6,7 +6,8 @@ const MODEL_OPTIONS = [
     { id: 'gemini-2.5-flash', label: '1️⃣ Flash', short: 'Flash' },
     { id: 'gemini-2.5-pro', label: '2️⃣ Pro', short: 'Pro' },
     { id: 'gemini-3-pro-preview', label: '3️⃣ Pro 3.0 Preview', short: 'Pro 3.0 Preview' },
-    { id: 'gemini-2.0-flash-lite', label: '4️⃣ Flash Lite', short: 'Flash Lite' },
+    { id: 'gemini-3.1-pro-preview', label: '4️⃣ Pro 3.1 Preview', short: 'Pro 3.1 Preview' },
+    { id: 'gemini-2.0-flash-lite', label: '5️⃣ Flash Lite', short: 'Flash Lite' },
 ];
 
 const PLATFORM_MODELS = {
@@ -14,6 +15,7 @@ const PLATFORM_MODELS = {
         { id: 'gemini-2.5-flash', label: '⚡ Flash 2.5' },
         { id: 'gemini-2.5-pro', label: '🧠 Pro 2.5' },
         { id: 'gemini-3-pro-preview', label: '🧠 Pro 3.0' },
+        { id: 'gemini-3.1-pro-preview', label: '🧠 Pro 3.1' },
         { id: 'gemini-2.0-flash-lite', label: '🆓 Flash Lite' }
     ],
     'kilo': [

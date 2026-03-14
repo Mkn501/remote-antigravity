@@ -38,7 +38,7 @@
 ## Recent Milestones
 | Date | Milestone |
 |------|-----------|
-| 2026-03-14 | Disabled Antigravity Claude Proxy (account suspension risk). Removed all Anthropic models from 5 files. Kilo now uses GLM-5/MiniMax/GLM-4.7 Flash via OpenRouter. 160 tests, stale test removed. |
+| 2026-03-14 | Disabled Antigravity Claude Proxy. Kilo → GLM-5/MiniMax/GLM-4.7 Flash via OpenRouter. Added gemini-3.1-pro-preview to model selector. Gemini CLI feature research → 4 backlog tasks. 161 tests. |
 | 2026-03-11 | Kilo 7.0.43→7.0.46. Session resume validated (--continue, --session, --format json). SOP-compliant spec: 9 WOs, dependency graph, Gemini guards. |
 | 2026-03-05 PM | Kilo CLI + Antigravity Claude Proxy integration. Claude Sonnet 4.6 + Opus 4.6 via proxy on :3456. Upgraded Kilo v1→v7. TTY fix. E2E validated. |
 | 2026-03-05 AM | Implemented P-005 (project-aware dispatch, 4 tasks) + P-006 (submodule-aware commits, 5 tasks). E2E verified via Telegram. 156 tests. |

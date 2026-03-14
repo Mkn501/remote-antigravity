@@ -23,6 +23,10 @@
 - [ ] Generalize prompt tool references (generic tool names) [Difficulty: 2]
 - [ ] Update `/help`, `/status`, BOT_COMMANDS [Difficulty: 2]
 - [ ] Update systemPatterns.md (architecture diagram + P-005) [Difficulty: 2]
+- [ ] [Feature] [Watcher] Investigate Gemini CLI --resume for native session persistence — could replace file-based session_history.txt. Test if --resume works with non-interactive mode (-p). [Ref: n/a] [Difficulty: 5]
+- [ ] [Feature] [Watcher] Evaluate --include-directories for multi-project context — could simplify P-005 (Project-Aware Dispatch) by launching Gemini with both active project + central dir. [Ref: n/a] [Difficulty: 4]
+- [ ] [Feature] [Watcher] Evaluate Gemini CLI native Plan Mode with research subagents — compare against current /plan_feature workflow. May reduce custom prompt complexity. [Ref: n/a] [Difficulty: 3]
+- [ ] [Feature] [Bot] Add gemini-3.1-pro-preview to model selector in registries.js + bot_v2.js + watcher.sh [Ref: n/a] [Difficulty: 1]
 
 ## Done
 
