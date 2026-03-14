@@ -4,29 +4,29 @@
 - [ ] Implement Session-Persistent Kilo Architecture — start with WO-SES-0 (agent config sync) then S-SES-1 (spike --session + --agent). Spec: `docs/specs/kilo_session_persistent_spec.md`
 
 ## Current Focus
-- [x] **Session 2026-03-11**: Kilo CLI session persistence discovery & architecture spec.
-  - Fixed watcher.sh model routing: `/plan_feature` now uses PLANNING_MODEL, not SELECTED_MODEL
-  - Upgraded Kilo CLI 7.0.43 → 7.0.46
-  - Validated session resume: `--continue`, `--session <id>`, `--format json` all work
-  - Discovered template SOP already defines 4 agents (`sop-coordinator`, `sop-planner`, `sop-developer`, `sop-auditor`)
-  - Created SOP-compliant spec with 9 work orders, dependency graph, testing strategy
-  - Added Gemini backend compatibility guards to all work orders
+- [x] **Session 2026-03-14**: Disabled Antigravity Claude Proxy to prevent account suspension.
+  - Removed all Anthropic/Claude models from `registries.js`, `bot_v2.js`, `watcher.sh`, `start.sh`
+  - Kilo backend now uses GLM-5 (top), MiniMax M2.5 (mid), GLM-4.7 Flash (free) via OpenRouter
+  - Disabled proxy lifecycle (start/stop/status) in `start.sh`
+  - Updated 8 regression tests in `bot_test_v3.js`, removed 1 stale test
+  - All 160 tests pass
 
 ## Open Work Items
 - P0: Duplicate `/kill` handler, broad `pkill`, undefined `PROJECT_DIR` (bot_refactoring_spec.md)
-- P0: Consolidate bot.js / bot_v2.js into single file
+- ~~P0: Consolidate bot.js / bot_v2.js~~ — **RESOLVED** (bot.js archived, bot_v2.js is canonical)
 - P1: Shell injection fix, consistent state access, duplicate import
 - Feature: Tavily MCP for Kilo CLI web search
 - Feature: Parallel Dispatch (To Do)
 
 ## Recent Changes
-- Session-persistent Kilo architecture spec: 9 work orders, SOP-compliant, ready for implementation
-- Kilo CLI upgraded to 7.0.46 with `--session`, `--continue`, `--format json`, `--agent` support
-- Watcher model routing fix: `/plan_feature` always uses PLANNING_MODEL
-- Discovered template SOP agents align with Kilo's native `--agent` system
+- Antigravity Claude Proxy permanently disabled — account suspension risk
+- Kilo models switched to OpenRouter-only: GLM-5, MiniMax M2.5, GLM-4.7 Flash
+- `start.sh` proxy lifecycle commented out
+- Stale `slash_count` regression test removed
 
 <details><summary>Older Sessions</summary>
 
+- **2026-03-11**: Kilo CLI session persistence discovery. Upgraded 7.0.43→7.0.46. SOP-compliant spec (9 WOs).
 - **2026-03-05 (PM)**: Kilo CLI + Antigravity Claude Proxy. Claude models via proxy :3456. Kilo v1→v7. TTY fix. E2E validated.
 - **2026-03-05 (AM)**: Multi-project routing fix + submodule-aware commits. 9 tasks, 156 tests.
 - **2026-03-01**: Investigated dispatch routing bug; wrote spec + 4 work orders.

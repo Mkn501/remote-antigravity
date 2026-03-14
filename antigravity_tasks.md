@@ -6,15 +6,6 @@
 
 ## To Do
 
-- [ ] [Architecture] [Watcher] WO-SES-0: Sync Kilo agent configs — update `sop-coordinator`, `sop-planner`, `sop-developer`, `sop-auditor` to use anthropic proxy models + sync system prompts from `workstation_sop.md §6` [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 2] [Jules: Yes]
-- [ ] [Research] S-SES-1: Spike — validate `--session` + `--agent` flags work together (agent switch mid-session preserves context) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 2]
-- [ ] [Architecture] [Watcher] WO-SES-1: Refactor `run_agent()` for session resume + JSON output in `scripts/watcher.sh` (lines ~135-220) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 5]
-- [ ] [Architecture] [Watcher] WO-SES-2: Add session lifecycle management (create on /startup, resume on messages, close on /shutdown) in `scripts/watcher.sh` (lines ~340-500) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 4]
-- [ ] [Architecture] [Watcher] WO-SES-3: Replace model routing with `--agent` flag selection in `scripts/watcher.sh` (lines ~275-310) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 3]
-- [ ] [Architecture] [Watcher] WO-SES-4: Implement edge case handlers (expired session, rate limit, context overflow fork) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 4]
-- [ ] [Architecture] [Watcher] WO-SES-5: Remove legacy mechanisms (telegram_reply.txt, TIER_MAP, text scraping) from `scripts/watcher.sh` [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 3]
-- [ ] [Feature] [Testing] WO-SES-6: Add session-persistence tests to `scripts/bot/bot_test_v3.js` [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 3]
-- [ ] [Docs] WO-SES-7: Add Pattern P-008 (Session-Persistent Kilo) to `memory-bank/systemPatterns.md` + update guide [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 1] [Jules: Yes]
 
 ## Backlog
 
@@ -26,7 +17,6 @@
 - [ ] [Feature] [Testing] Add parallel dispatch E2E + regression tests [Ref: docs/specs/parallel_kilo_dispatch_spec.md] [Difficulty: 4]
 - [ ] [Research] [Reliability] Investigate Flash + Sandbox replace errors on large files [Ref: docs/retrospectives/2026-02-18_telegram_plan_mode_and_model_reliability.md] [Difficulty: 3]
 - [ ] [Feature] Integrate Claude Code CLI as a new backend option [Difficulty: 5]
-
 - [ ] [Architecture] [Bot] Modular bot.js refactor (12 modules) [Ref: docs/specs/bot_refactoring_spec.md] [Difficulty: 7]
 - [ ] [Architecture] [Testing] Migrate to node:test runner + tiered test files [Ref: docs/specs/bot_test_refactoring_spec.md] [Difficulty: 5]
 - [ ] Replace inline Gemini invocation with `run_agent()` [Difficulty: 4]
@@ -105,3 +95,12 @@
 - [x] [Bug] [Routing] Add `project` to `writeDispatch()` in bot [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 1]
 - [x] [Bug] [Routing] Use dispatch `project` in watcher dispatch execution [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
 - [x] [Bug] [Routing] Add regression tests for project-aware dispatch [Ref: docs/specs/multi_project_routing_fix_spec.md] [Difficulty: 2]
+- [x] [Architecture] [Watcher] WO-SES-0: Sync Kilo agent configs — update `sop-coordinator`, `sop-planner`, `sop-developer`, `sop-auditor` to use anthropic proxy models + sync system prompts from `workstation_sop.md §6` [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 2] [Jules: Yes]
+- [x] [Research] S-SES-1: Spike — validate `--session` + `--agent` + `--fork` flags work together (agent switch mid-session preserves context, fork creates branch session) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 2]
+- [x] [Architecture] [Watcher] WO-SES-1: Refactor `run_agent()` for session resume + JSON output — env vars (`KILO_SESSION_ID`, `KILO_AGENT`), return contract (`KILO_SESSION_ID_OUT`, `KILO_RESPONSE_TEXT`), dispatch loop compat [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 5]
+- [x] [Architecture] [Watcher] WO-SES-2: Add session lifecycle management (create on /startup, resume on messages, close on /shutdown) + `state.json` schema update (`kiloSessionId`, `kiloSessionStartedAt`) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 4]
+- [x] [Architecture] [Watcher] WO-SES-3: Replace Kilo branch of `case "$CURRENT_BACKEND"` model routing with `--agent` flag selection (Gemini branch unchanged) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 3]
+- [x] [Architecture] [Watcher] WO-SES-4: Implement edge case handlers (expired session, rate limit, context overflow fork) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 4]
+- [x] [Architecture] [Watcher] WO-SES-5: Streamline Kilo prompt path — conditional branching to strip reply-file + session_history instructions from Kilo prompts (Gemini prompts unchanged) [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 3]
+- [x] [Docs] WO-SES-7: Add Pattern P-008 (Session-Persistent Kilo) to `memory-bank/systemPatterns.md` + update guide [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 1] [Jules: Yes]
+- [x] [Feature] [Testing] WO-SES-6: Add session-persistence tests to `scripts/bot/bot_test_v3.js` [Ref: docs/specs/kilo_session_persistent_spec.md] [Difficulty: 3]

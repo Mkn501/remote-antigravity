@@ -3,7 +3,7 @@
 ## Status Dashboard
 - **Health**: 🟢 Healthy
 - **Phase**: Operational / Dogfooding
-- **Last Updated**: 2026-03-11
+- **Last Updated**: 2026-03-14
 
 ## Milestones
 - [x] **M1: Project Setup** — Scaffold from template, define scope
@@ -28,15 +28,17 @@
 
 ## Known Risks
 - `--yolo` mode auto-approves all Gemini tool calls — accepted for single-user personal use.
-- bot.js is a 1,373-line monolith — root cause of Gemini CLI destructive edits (see `bot_refactoring_spec.md`).
+- ~~bot.js monolith~~ — **ARCHIVED** (bot_v2.js is canonical, all P0/P1 fixes applied).
 - Duplicate `/kill` handler fires pkill twice (P0 in refactoring spec).
 - `PROJECT_DIR` undefined in `/apply_fix` and `/discard_fix` handlers (P0 bug).
 - Flash model reliability with `--sandbox` on large files (replace errors).
+- Antigravity account suspended for using login outside Google tools — Claude proxy permanently disabled.
 - ~~P1: Dispatch routing bug~~ — **RESOLVED** (P-005 Project-Aware Dispatch + P-006 Submodule-Aware Commit)
 
 ## Recent Milestones
 | Date | Milestone |
 |------|-----------|
+| 2026-03-14 | Disabled Antigravity Claude Proxy (account suspension risk). Removed all Anthropic models from 5 files. Kilo now uses GLM-5/MiniMax/GLM-4.7 Flash via OpenRouter. 160 tests, stale test removed. |
 | 2026-03-11 | Kilo 7.0.43→7.0.46. Session resume validated (--continue, --session, --format json). SOP-compliant spec: 9 WOs, dependency graph, Gemini guards. |
 | 2026-03-05 PM | Kilo CLI + Antigravity Claude Proxy integration. Claude Sonnet 4.6 + Opus 4.6 via proxy on :3456. Upgraded Kilo v1→v7. TTY fix. E2E validated. |
 | 2026-03-05 AM | Implemented P-005 (project-aware dispatch, 4 tasks) + P-006 (submodule-aware commits, 5 tasks). E2E verified via Telegram. 156 tests. |

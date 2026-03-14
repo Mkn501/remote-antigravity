@@ -23,7 +23,8 @@ graph LR
 | P-004 | **Wrapper Script Hook** | Use `exec` wrappers to launch hooks in paths with spaces (Gemini CLI workaround) |
 | P-005 | **Project-Aware Dispatch** | Dispatch tasks carry their originating project path (`wa_dispatch.json.project`), so tasks always execute in the project they were planned for, not the currently active project |
 | P-006 | **Submodule-Aware Commit** | `commit_with_submodules()` detects submodules at runtime, commits inside-out (submodule first, then outer), and `setup_submodule_branches()` mirrors branch operations |
-| P-007 | **Antigravity Claude Proxy** | Local proxy on `:8080` translates Anthropic API → Antigravity Cloud, letting Kilo CLI use Claude models through existing Google Antigravity subscription |
+| P-007 | ~~**Antigravity Claude Proxy**~~ | **DISABLED** — Account suspension risk. Kilo now uses OpenRouter models (GLM-5, MiniMax, GLM-4.7 Flash) directly. Proxy lifecycle removed from `start.sh`. |
+| P-008 | **Session-Persistent Kilo** | Kilo CLI `--session` flag preserves context across turns. Watcher reads/writes `kiloSessionId` in `state.json`, sets `KILO_SESSION_ID` + `KILO_AGENT` env vars for `run_agent()`. Agent routing maps workflows → SOP agents (`sop-coordinator`, `sop-planner`, `sop-developer`, `sop-auditor`). Session cleared on `/startup` + `/shutdown`. |
 
 ## Key Decisions
 - **No OpenClaw**: Direct Gemini CLI hooks + lightweight bot, no gateway layer

@@ -134,6 +134,19 @@ get_backend() {
 # --- Helper: Run agent CLI with backend abstraction ---
 # Usage: run_agent "prompt" "model" "project_dir" [extra_flags...]
 # Sets AGENT_OUTPUT and AGENT_STDERR_CONTENT in caller scope
+#
+# Kilo session env vars (optional, Kilo-only — ignored by Gemini path):
+#   KILO_SESSION_ID   — session ID to resume (uses --session <id>)
+#   KILO_AGENT        — agent name to use (uses --agent <name>)
+#
+# Return contract (set after call):
+#   AGENT_OUTPUT           — raw stdout (all backends)
+#   AGENT_STDERR_CONTENT   — raw stderr (all backends)
+#   AGENT_EXIT_CODE        — exit code (all backends)
+#   KILO_SESSION_ID_OUT    — session ID from JSON output (Kilo only, empty for Gemini)
+#   KILO_RESPONSE_TEXT     — extracted text from JSON events (Kilo only, empty for Gemini)
+#   KILO_COST              — cost from step_finish event (Kilo only, empty for Gemini)
+#   KILO_TOKENS            — total tokens from step_finish event (Kilo only, empty for Gemini)
 run_agent() {
     local prompt="$1"
     local model="$2"
@@ -150,25 +163,36 @@ run_agent() {
     local AGENT_EXIT_CODE_FILE
     AGENT_EXIT_CODE_FILE=$(mktemp)
 
+    # Reset Kilo-specific return vars
+    KILO_SESSION_ID_OUT=""
+    KILO_RESPONSE_TEXT=""
+    KILO_COST=""
+    KILO_TOKENS=""
+
     case "$backend" in
         kilo)
-            write_to_outbox "🧠 Running Kilo CLI ($model)..."
+            # Build label for status message
+            local agent_label="${KILO_AGENT:+ [${KILO_AGENT}]}"
+            local session_label="${KILO_SESSION_ID:+ (resuming)}"
+            write_to_outbox "🧠 Running Kilo CLI ($model)${agent_label}${session_label}..."
             local KILO_ARGS=(run --auto)
+
+            # --- Session resume flags (env var driven) ---
+            if [ -n "${KILO_SESSION_ID:-}" ]; then
+                KILO_ARGS+=("--session" "$KILO_SESSION_ID")
+            fi
+            if [ -n "${KILO_AGENT:-}" ]; then
+                KILO_ARGS+=("--agent" "$KILO_AGENT")
+            fi
+
+            # Always use --format json when session mode is active
+            # (session mode = KILO_SESSION_ID set OR new session being created)
+            if [ -n "${KILO_SESSION_ID:-}" ] || [ -n "${KILO_AGENT:-}" ]; then
+                KILO_ARGS+=("--format" "json")
+            fi
+
             if [ -n "$model" ]; then
-                # Normalize model ID for Kilo CLI (expects provider/model format)
-                # 3-part: openrouter/z-ai/glm-5 → openrouter/glm-5
-                # 2-part: anthropic/claude-sonnet-4-6 → anthropic/claude-sonnet-4-6 (unchanged)
-                # 1-part: gemini-2.5-flash → gemini-2.5-flash (unchanged)
-                local kilo_model="$model"
-                local slash_count
-                slash_count=$(echo "$model" | tr -cd '/' | wc -c | tr -d ' ')
-                if [ "$slash_count" -ge 2 ]; then
-                    # 3+ part path: keep first segment + last segment
-                    local provider="${model%%/*}"
-                    local model_name="${model##*/}"
-                    kilo_model="${provider}/${model_name}"
-                fi
-                KILO_ARGS+=("--model" "$kilo_model")
+                KILO_ARGS+=("--model" "$model")
             fi
             KILO_ARGS+=(${extra_flags[@]+"${extra_flags[@]}"})
             KILO_ARGS+=("$prompt")
@@ -213,6 +237,18 @@ run_agent() {
     AGENT_OUTPUT=$(cat "$AGENT_STDOUT_FILE" 2>/dev/null || echo "")
     AGENT_STDERR_CONTENT=$(cat "$AGENT_STDERR_FILE" 2>/dev/null || echo "")
     AGENT_EXIT_CODE=$(cat "$AGENT_EXIT_CODE_FILE" 2>/dev/null || echo "1")
+
+    # --- Kilo JSON output parsing (only when --format json was used) ---
+    if [ "$backend" = "kilo" ] && { [ -n "${KILO_SESSION_ID:-}" ] || [ -n "${KILO_AGENT:-}" ]; }; then
+        # Extract session ID (consistent across all events)
+        KILO_SESSION_ID_OUT=$(echo "$AGENT_OUTPUT" | jq -r 'select(.sessionID != null) | .sessionID' 2>/dev/null | head -1)
+        # Extract text parts (concatenate all text events)
+        KILO_RESPONSE_TEXT=$(echo "$AGENT_OUTPUT" | jq -r 'select(.type == "text") | .part.text' 2>/dev/null | tr -d '\n')
+        # Extract cost and tokens from step_finish event
+        KILO_COST=$(echo "$AGENT_OUTPUT" | jq -r 'select(.type == "step_finish") | .part.cost' 2>/dev/null | tail -1)
+        KILO_TOKENS=$(echo "$AGENT_OUTPUT" | jq -r 'select(.type == "step_finish") | .part.tokens.total' 2>/dev/null | tail -1)
+    fi
+
     # Append stderr to session log
     cat "$AGENT_STDERR_FILE" >> "$DOT_GEMINI/wa_session.log" 2>/dev/null || true
     rm -f "$AGENT_STDOUT_FILE" "$AGENT_STDERR_FILE" "$AGENT_EXIT_CODE_FILE"
@@ -276,9 +312,9 @@ while true; do
             CURRENT_BACKEND=$(get_backend)
             case "$CURRENT_BACKEND" in
                 kilo)
-                    ROUTINE_MODEL="anthropic/claude-sonnet-4-6"
-                    PLANNING_MODEL="anthropic/claude-sonnet-4-6"
-                    FALLBACK_MODEL="anthropic/claude-sonnet-4-6"
+                    ROUTINE_MODEL="openrouter/minimax/minimax-m2.5"
+                    PLANNING_MODEL="openrouter/z-ai/glm-5"
+                    FALLBACK_MODEL="openrouter/z-ai/glm-4.7-flash"
                     ;;
                 gemini|*)
                     ROUTINE_MODEL="gemini-2.5-flash"
@@ -286,6 +322,57 @@ while true; do
                     FALLBACK_MODEL="gemini-2.5-pro"  # Pro 3 → Pro 2.5 fallback
                     ;;
             esac
+
+            # --- Kilo session lifecycle: load existing session ---
+            KILO_SESSION_ID=""
+            KILO_AGENT=""
+            if [ "$CURRENT_BACKEND" = "kilo" ]; then
+                # /startup always starts a fresh session — clear any stale ID
+                if [ "$IS_NEW_SESSION" = true ]; then
+                    jq '.kiloSessionId = null | .kiloSessionStartedAt = null' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                    echo "🔄 Kilo session cleared for fresh start" >&2
+                else
+                    # Resume existing session if available
+                    KILO_SESSION_ID=$(jq -r '.kiloSessionId // empty' "$STATE_FILE" 2>/dev/null || echo "")
+                    if [ -n "$KILO_SESSION_ID" ]; then
+                        echo "🔗 Resuming Kilo session: ${KILO_SESSION_ID:0:20}..." >&2
+                    fi
+                fi
+
+                # --- Agent-per-role routing (Kilo only) ---
+                # Maps workflow commands to SOP agents (system prompt + permissions)
+                case "$USER_MESSAGES" in
+                    /startup*|/shutdown*)
+                        KILO_AGENT="sop-coordinator"
+                        jq '.lastCommand = "startup"' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                        ;;
+                    /plan_feature*|/plan*)
+                        KILO_AGENT="sop-planner"
+                        jq '.lastCommand = "plan_feature"' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                        ;;
+                    /pr_check*)
+                        KILO_AGENT="sop-auditor"
+                        jq '.lastCommand = "pr_check"' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                        ;;
+                    /implement_task*)
+                        KILO_AGENT="sop-developer"
+                        jq '.lastCommand = "implement_task"' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                        ;;
+                    *)
+                        # Smart fallback: if last command was plan_feature and no spec exists yet,
+                        # this is a clarification reply — keep routing to sop-planner
+                        LAST_CMD=$(jq -r '.lastCommand // empty' "$STATE_FILE" 2>/dev/null || echo "")
+                        HAS_SPEC=$(jq -r '.executionPlan.specRef // empty' "$STATE_FILE" 2>/dev/null || echo "")
+                        if [ "$LAST_CMD" = "plan_feature" ] && [ -z "$HAS_SPEC" ]; then
+                            KILO_AGENT="sop-planner"
+                            echo "🧠 Planning clarification — routing to sop-planner" >&2
+                        else
+                            KILO_AGENT="sop-developer"
+                        fi
+                        ;;
+                esac
+                echo "🎭 Kilo agent: $KILO_AGENT" >&2
+            fi
             case "$USER_MESSAGES" in
                 /startup*|/shutdown*)
                     ACTIVE_MODEL="$ROUTINE_MODEL"
@@ -392,17 +479,32 @@ User specified: $EXTRA_ARGS"
                     TELEGRAM_PROMPT="⚡ Execute this workflow:
 $WORKFLOW_CONTENT
 $ARGS_SECTION
----
+---"
+                    # Backend-specific context instructions
+                    if [ "$CURRENT_BACKEND" != "kilo" ] || [ -z "${KILO_SESSION_ID:-}${KILO_AGENT:-}" ]; then
+                        # Gemini or non-session Kilo: inject session_history and reply file instructions
+                        TELEGRAM_PROMPT="$TELEGRAM_PROMPT
 Conversation history for this session is in: .gemini/session_history.txt
 Read it first for context on what has been discussed so far.
----
+---"
+                    fi
+                    TELEGRAM_PROMPT="$TELEGRAM_PROMPT
 You have FULL tool access: use your available file, shell, and search tools directly.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
 - NEVER delete, rename, or move any files unless the user explicitly asked you to.
 - For ANY research task, ALWAYS use web search to get current data. Never rely solely on training data.
 - Follow instructions LITERALLY. If the workflow says 'plan' or 'spec', produce ONLY the document — do NOT implement.
-Execute the workflow above step by step.
+Execute the workflow above step by step."
+                    if [ "$CURRENT_BACKEND" = "kilo" ] && [ -n "${KILO_SESSION_ID:-}${KILO_AGENT:-}" ]; then
+                        TELEGRAM_PROMPT="$TELEGRAM_PROMPT
+OUTPUT FORMAT (critical — your reply goes directly to the user's phone via Telegram):
+- Plain text only — NO markdown headers (##), NO bold (**text**), NO code blocks
+- Use emoji for structure: 📊 for status, ✅ for done, ⚡ for active, 🎯 for next
+- Use bullet points (•) for lists
+- Be concise — phone screens are small"
+                    else
+                        TELEGRAM_PROMPT="$TELEGRAM_PROMPT
 When done, write a short Telegram-friendly reply to the file: .gemini/telegram_reply.txt
 Rules for the reply file:
 - Use plain text with emoji for structure
@@ -410,12 +512,13 @@ Rules for the reply file:
 - No markdown headers or code blocks
 - Be concise but complete — include all important information
 - This file gets sent directly to the user's phone"
+                    fi
                 else
                     # Normal message (no workflow)
                     PLAN_GUARD=""
                     if [ "$IS_PLAN_FEATURE" = true ]; then
                         # Find the active spec file for context
-                        ACTIVE_SPEC=$(python3 -c "import json; s=json.load(open('$ACTIVE_PROJECT/.gemini/state.json')); print(s.get('executionPlan',{}).get('specRef',''))" 2>/dev/null || echo "")
+                        ACTIVE_SPEC=$(python3 -c "import json; s=json.load(open('$STATE_FILE')); print(s.get('executionPlan',{}).get('specRef',''))" 2>/dev/null || echo "")
                         [ -z "$ACTIVE_SPEC" ] && ACTIVE_SPEC=$(cd "$ACTIVE_PROJECT" && find docs/specs -name "*.md" -not -name "_*" -type f 2>/dev/null | sort -t/ -k3 | tail -1)
                         SPEC_HINT=""
                         [ -n "$ACTIVE_SPEC" ] && SPEC_HINT="
@@ -432,17 +535,32 @@ Rules for the reply file:
                     fi
                     TELEGRAM_PROMPT="📱 Telegram message from the user:
 $USER_MESSAGES
----
+---"
+                    # Backend-specific context instructions
+                    if [ "$CURRENT_BACKEND" != "kilo" ] || [ -z "${KILO_SESSION_ID:-}${KILO_AGENT:-}" ]; then
+                        TELEGRAM_PROMPT="$TELEGRAM_PROMPT
 Conversation history for this session is in: .gemini/session_history.txt
 Read it first for context on what has been discussed so far.
----${PLAN_GUARD}
+---"
+                    fi
+                    TELEGRAM_PROMPT="$TELEGRAM_PROMPT
+${PLAN_GUARD}
 You have FULL tool access: use your available file, shell, and search tools directly.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
 CRITICAL RULES:
 - NEVER delete, rename, or move any files unless the user explicitly asked you to.
 - For ANY research task, ALWAYS use web search to get current data. Never rely solely on training data.
 - Follow the user's request EXACTLY as stated. If they ask for a spec, plan, or analysis, produce ONLY that document — do NOT implement or write code.
-- Only write code if the user explicitly asks you to implement, build, or code something.
+- Only write code if the user explicitly asks you to implement, build, or code something."
+                    if [ "$CURRENT_BACKEND" = "kilo" ] && [ -n "${KILO_SESSION_ID:-}${KILO_AGENT:-}" ]; then
+                        TELEGRAM_PROMPT="$TELEGRAM_PROMPT
+OUTPUT FORMAT (critical — your reply goes directly to the user's phone via Telegram):
+- Plain text only — NO markdown headers (##), NO bold (**text**), NO code blocks
+- Use emoji for structure: 📊 for status, ✅ for done, ⚡ for active, 🎯 for next
+- Use bullet points (•) for lists
+- Be concise — phone screens are small"
+                    else
+                        TELEGRAM_PROMPT="$TELEGRAM_PROMPT
 When done, write a short Telegram-friendly reply to the file: .gemini/telegram_reply.txt
 Rules for the reply file:
 - Use plain text with emoji for structure
@@ -450,6 +568,7 @@ Rules for the reply file:
 - No markdown headers or code blocks
 - Be concise but complete — include all important information
 - This file gets sent directly to the user's phone"
+                    fi
                 fi
 
                 # Create timestamp marker for spec file detection
@@ -457,7 +576,20 @@ Rules for the reply file:
                 touch "$DOT_GEMINI/.wa_session_start"
 
                 # Run agent via backend abstraction
+                # Kilo session env vars are set by lifecycle block above (line ~340)
+                # For Gemini, KILO_SESSION_ID and KILO_AGENT are empty (no-op in run_agent)
+                export KILO_SESSION_ID KILO_AGENT
                 run_agent "$TELEGRAM_PROMPT" "$ACTIVE_MODEL" "$ACTIVE_PROJECT"
+
+                # --- Kilo session lifecycle: store session ID ---
+                if [ "$CURRENT_BACKEND" = "kilo" ] && [ -n "$KILO_SESSION_ID_OUT" ]; then
+                    jq --arg sid "$KILO_SESSION_ID_OUT" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+                        '.kiloSessionId = $sid | .kiloSessionStartedAt = (if .kiloSessionStartedAt then .kiloSessionStartedAt else $ts end)' \
+                        "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                    # Update env var for fallback retry (if needed)
+                    KILO_SESSION_ID="$KILO_SESSION_ID_OUT"
+                    echo "📌 Kilo session stored: ${KILO_SESSION_ID_OUT:0:20}..." >&2
+                fi
 
                 # Detect rate limit / quota errors
                 RATE_LIMITED=false
@@ -467,11 +599,37 @@ Rules for the reply file:
                     echo "⚠️  Rate limit detected for $ACTIVE_MODEL" >&2
                 fi
 
+                # --- Kilo session-aware error recovery (WO-SES-4) ---
+                SESSION_RECOVERED=false
+                if [ "$CURRENT_BACKEND" = "kilo" ] && [ "${AGENT_EXIT_CODE:-0}" -ne 0 ] && [ -n "${KILO_SESSION_ID:-}" ]; then
+                    # Check if session is expired/invalid (not a rate limit)
+                    if [ "$RATE_LIMITED" = false ]; then
+                        write_to_outbox "⚠️ Session expired or invalid. Starting fresh session..."
+                        echo "⚠️  Kilo session expired — clearing and retrying" >&2
+                        # Clear stale session
+                        KILO_SESSION_ID=""
+                        export KILO_SESSION_ID
+                        jq '.kiloSessionId = null | .kiloSessionStartedAt = null' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                        # Retry with fresh session
+                        run_agent "$TELEGRAM_PROMPT" "$ACTIVE_MODEL" "$ACTIVE_PROJECT"
+                        SESSION_RECOVERED=true
+                        # Store new session if recovery succeeded
+                        if [ -n "$KILO_SESSION_ID_OUT" ]; then
+                            jq --arg sid "$KILO_SESSION_ID_OUT" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+                                '.kiloSessionId = $sid | .kiloSessionStartedAt = $ts' \
+                                "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                            KILO_SESSION_ID="$KILO_SESSION_ID_OUT"
+                            write_to_outbox "✅ New session created after recovery."
+                        fi
+                    fi
+                fi
+
                 # Fallback retry: if rate limited + no output, retry with fallback model
                 if [ "$RATE_LIMITED" = true ] && [ -z "$AGENT_OUTPUT" ] && [ "$ACTIVE_MODEL" != "$FALLBACK_MODEL" ] && [ "$ACTIVE_MODEL" != "$ROUTINE_MODEL" ]; then
                     write_to_outbox "🔄 Retrying with $FALLBACK_MODEL..."
                     echo "🔄 Falling back to $FALLBACK_MODEL" >&2
                     ACTIVE_MODEL="$FALLBACK_MODEL"
+                    # Keep session alive during rate limit fallback
                     run_agent "$TELEGRAM_PROMPT" "$FALLBACK_MODEL" "$ACTIVE_PROJECT"
                     if echo "$AGENT_STDERR_CONTENT" | grep -qiE '429|rate.limit|quota|resource.exhausted'; then
                         write_to_outbox "❌ $FALLBACK_MODEL also rate limited. Try again later."
@@ -487,10 +645,13 @@ Rules for the reply file:
                     echo "📋 $(date +%H:%M:%S) | Diagnosis output saved to diagnosis_output.txt"
                 fi
 
-                # Read Telegram reply from file (written by Gemini)
+                # Read Telegram reply — Kilo uses JSON response, Gemini uses reply file
                 REPLY_FILE="$ACTIVE_PROJECT/.gemini/telegram_reply.txt"
                 TELEGRAM_RESPONSE=""
-                if [ -f "$REPLY_FILE" ]; then
+                if [ "$CURRENT_BACKEND" = "kilo" ] && [ -n "$KILO_RESPONSE_TEXT" ]; then
+                    # Kilo session mode: use parsed JSON text directly
+                    TELEGRAM_RESPONSE="$KILO_RESPONSE_TEXT"
+                elif [ -f "$REPLY_FILE" ]; then
                     TELEGRAM_RESPONSE=$(cat "$REPLY_FILE")
                     rm -f "$REPLY_FILE"
                 fi
@@ -563,7 +724,7 @@ Rules for the reply file:
                         # Always reload on initial /plan_feature, skip only on refinements if plan exists
                         TASKS_FILE="$ACTIVE_PROJECT/antigravity_tasks.md"
                         IS_INITIAL_PLAN=$(echo "$USER_MESSAGES" | grep -qi "^/plan_feature\|^/plan " && echo "yes" || echo "no")
-                        PLAN_EXISTS=$(python3 -c "import json; s=json.load(open('$ACTIVE_PROJECT/.gemini/state.json')); print('yes' if s.get('executionPlan',{}).get('status') else 'no')" 2>/dev/null || echo "no")
+                        PLAN_EXISTS=$(python3 -c "import json; s=json.load(open('$STATE_FILE')); print('yes' if s.get('executionPlan',{}).get('status') else 'no')" 2>/dev/null || echo "no")
                         if [ -f "$TASKS_FILE" ] && [ -n "$SPEC_FILE" ] && { [ "$IS_INITIAL_PLAN" = "yes" ] || [ "$PLAN_EXISTS" = "no" ]; }; then
                             python3 -c "
 import json, re, sys
@@ -572,7 +733,12 @@ tasks_path = sys.argv[1]
 state_path = sys.argv[2]
 spec_ref = sys.argv[3]
 
-# Read current backend from state
+# Read current backend from state (create if missing)
+import os
+os.makedirs(os.path.dirname(state_path), exist_ok=True)
+if not os.path.exists(state_path):
+    with open(state_path, 'w') as f:
+        json.dump({}, f)
 with open(state_path) as f:
     cur_state = json.load(f)
 backend = cur_state.get('backend', 'gemini')
@@ -580,7 +746,7 @@ backend = cur_state.get('backend', 'gemini')
 # Backend-aware tier defaults
 TIER_MAP = {
     'gemini': {'top': ('gemini', 'gemini-2.5-pro'), 'mid': ('gemini', 'gemini-2.5-flash'), 'free': ('gemini', 'gemini-2.0-flash-lite')},
-    'kilo':   {'top': ('kilo', 'anthropic/claude-opus-4-6-thinking'), 'mid': ('kilo', 'anthropic/claude-sonnet-4-6'), 'free': ('kilo', 'anthropic/claude-sonnet-4-6')}
+    'kilo':   {'top': ('kilo', 'openrouter/z-ai/glm-5'), 'mid': ('kilo', 'openrouter/minimax/minimax-m2.5'), 'free': ('kilo', 'openrouter/z-ai/glm-4.7-flash')}
 }
 tier_defaults = TIER_MAP.get(backend, TIER_MAP['gemini'])
 
@@ -588,21 +754,31 @@ tier_defaults = TIER_MAP.get(backend, TIER_MAP['gemini'])
 with open(tasks_path) as f:
     content = f.read()
 
-# Parse To Do items with the spec ref
-pattern = r'- \[[ ]\] \[([^\]]+)\] \[([^\]]+)\] (.+?) \[Ref: ' + re.escape(spec_ref) + r'\] \[Difficulty: (\d+)(?:/\d+)?\]'
+# Parse To Do items with the spec ref (flexible: matches full path or just basename)
+# Handles both: [Cat] [Topic] desc  AND  [Cat] TASK-ID: desc
+spec_basename = os.path.basename(spec_ref)
+pattern = r'- \[[ ]\] \[([^\]]+)\] (.+?) \[Ref: [^\]]*' + re.escape(spec_basename) + r'[^\]]*\] \[Difficulty: (\d+)(?:/\d+)?\]'
 matches = re.findall(pattern, content)
+
+# Also pick up trivial tasks with [Ref: n/a...] — agent skips spec for trivial work
+if not matches or spec_ref in ('n/a', ''):
+    na_pattern = r'- \[[ ]\] \[([^\]]+)\] (.+?) \[Ref: n/a[^\]]*\] \[Difficulty: (\d+)(?:/\d+)?\]'
+    na_matches = re.findall(na_pattern, content)
+    if na_matches:
+        matches = na_matches
+        spec_ref = 'n/a'
 
 if not matches:
     sys.exit(0)
 
 tasks = []
-for i, (cat, topic, desc, diff) in enumerate(matches, 1):
+for i, (cat, desc, diff) in enumerate(matches, 1):
     tier = 'mid' if int(diff) <= 5 else 'top'
     plat, model = tier_defaults.get(tier, tier_defaults['mid'])
     tasks.append({
         'id': i,
         'description': desc.strip(),
-        'summary': f'{cat}/{topic}',
+        'summary': f'{cat}',
         'difficulty': int(diff),
         'tier': tier,
         'platform': plat,
@@ -613,8 +789,11 @@ for i, (cat, topic, desc, diff) in enumerate(matches, 1):
     })
 
 # Load state and write execution plan
-with open(state_path) as f:
-    state = json.load(f)
+if not os.path.exists(state_path):
+    state = {}
+else:
+    with open(state_path) as f:
+        state = json.load(f)
 
 state['executionPlan'] = {
     'status': 'pending_review',
@@ -626,8 +805,10 @@ with open(state_path, 'w') as f:
     json.dump(state, f, indent=2)
 
 print(f'Loaded {len(tasks)} tasks into execution plan')
-" "$TASKS_FILE" "$ACTIVE_PROJECT/.gemini/state.json" "$SPEC_FILE" 2>&1 || true
+" "$TASKS_FILE" "$STATE_FILE" "$SPEC_FILE" 2>&1 || true
                             echo "📋 Execution plan auto-loaded into state.json" >&2
+                            # Exit planning mode — spec created, future messages go to sop-developer
+                            jq '.lastCommand = "plan_complete"' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
                         fi
                     fi
 
@@ -637,6 +818,11 @@ print(f'Loaded {len(tasks)} tasks into execution plan')
                         git checkout -f main 2>/dev/null || true
                         echo "🏁 Session closed — branch '$ACTIVE_BRANCH' ready for review" >&2
                         write_to_outbox "🏁 Session closed — branch ready for review"
+                        # Clear Kilo session on shutdown
+                        if [ "$CURRENT_BACKEND" = "kilo" ]; then
+                            jq '.kiloSessionId = null | .kiloSessionStartedAt = null' "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                            echo "🔒 Kilo session cleared on shutdown" >&2
+                        fi
                     fi
                 fi
 
@@ -732,7 +918,7 @@ print(f'Loaded {len(tasks)} tasks into execution plan')
                     fi
 
                     # Build the task prompt — inject spec ref and scope boundary
-                    TASK_SPEC_REF=$(python3 -c "import json; s=json.load(open('$ACTIVE_PROJECT/.gemini/state.json')); print(s.get('executionPlan',{}).get('specRef',''))" 2>/dev/null || echo "")
+                    TASK_SPEC_REF=$(python3 -c "import json; s=json.load(open('$STATE_FILE')); print(s.get('executionPlan',{}).get('specRef',''))" 2>/dev/null || echo "")
                     TASK_SCOPE=$(python3 -c "
 import re, sys
 desc = sys.argv[1]
@@ -772,8 +958,8 @@ Instructions:
 - Do NOT implement other tasks or make unrelated changes
 - Do NOT modify files outside the scope boundary listed above
 - Run tests after implementation to verify
-- Write a brief completion report to: .gemini/telegram_reply.txt
-  Format: what was done, files changed, test results
+- Write a brief completion report — plain text with emoji, NO markdown headers or bold
+  TO: .gemini/telegram_reply.txt
 ---
 You have FULL tool access: use your available file, shell, and search tools directly.
 Do NOT say tools are unavailable — they ARE available. Use them directly.
@@ -783,6 +969,10 @@ CRITICAL: Follow the task description EXACTLY. Implement only this specific task
                     EXTRA_FLAGS=()
                     if [ "$(get_backend)" != "kilo" ]; then
                         EXTRA_FLAGS+=("--sandbox")
+                    fi
+                    # For Kilo: always use sop-developer for implementation dispatch
+                    if [ "$(get_backend)" = "kilo" ]; then
+                        KILO_AGENT="sop-developer"
                     fi
                     run_agent "$TASK_PROMPT" "$TASK_MODEL" "$ACTIVE_PROJECT" ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}
 

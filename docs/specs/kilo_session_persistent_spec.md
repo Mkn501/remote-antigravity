@@ -18,8 +18,8 @@ Kilo CLI 7.0.46 supports:
 - `--continue` — resume last session ✅ (validated: "Remember 42" → "42")
 - `--session <id>` — resume specific session by ID ✅
 - `--format json` — structured output events with `type`, `text`, `cost`, `tokens` ✅
-- `--agent <name>` — custom agent with baked-in model + system prompt
-- `--fork` — branch session (for context overflow)
+- `--agent <name>` — custom agent with system prompt + permissions ✅ (validated: `--agent` and `--model` are independent — `--model` sets LLM, `--agent` sets prompt/permissions)
+- `--fork` — branch session (for context overflow) ✅ (validated: returns new session ID with context from original preserved)
 
 ### Session Lifecycle
 
@@ -53,6 +53,8 @@ Kilo CLI 7.0.46 supports:
 | `sop-developer` | Execute ONE task | `anthropic/claude-sonnet-4-6` | `/implement_task`, regular |
 | `sop-auditor` | Code review & PR | `anthropic/claude-opus-4-6-thinking` | `/pr_check` |
 
+> ⚠️ **Cost Warning**: `sop-planner` and `sop-auditor` use `claude-opus-4-6-thinking`, which is significantly more expensive than `claude-sonnet-4-6`. Current watcher uses Sonnet for all Kilo tasks. This is an intentional upgrade — monitor usage after rollout.
+
 ### Response Parsing (JSON)
 
 ```bash
@@ -67,15 +69,15 @@ SESSION_ID=$(echo "$OUTPUT" | jq -r '.sessionID' | head -1)
 
 > **ALL changes in this spec are Kilo-only.** The Gemini CLI backend must remain fully functional and unchanged.
 
-Every code change must be guarded by `case "$backend"` or `if [ "$CURRENT_BACKEND" = "kilo" ]`. Specifically:
+Every code change must be guarded by the existing `case "$CURRENT_BACKEND"` structure (already present at line ~277 in `watcher.sh`). Specifically:
 
-| Mechanism | Kilo Path | Gemini Path |
-|---|---|---|
-| Response extraction | `--format json` → `jq` | `telegram_reply.txt` (keep as-is) |
-| Session context | `--session` (real LLM persistence) | `session_history.txt` (keep as-is) |
-| Model routing | `--agent` flag (agent-per-role) | `PLANNING_MODEL`/`ROUTINE_MODEL` (keep as-is) |
-| Execution Plan table | Agents handle tier routing | `TIER_MAP` inline Python (keep as-is) |
-| Prompt injection | Minimal (session has context) | Full prompt with SOP + reply instructions (keep as-is) |
+| Mechanism | Current State (Both Backends) | Kilo After This Spec | Gemini After This Spec |
+|---|---|---|---|
+| Response extraction | Both use `telegram_reply.txt` written by agent | `--format json` → `jq` (skip reply file) | `telegram_reply.txt` (unchanged) |
+| Session context | Both use `session_history.txt` + prompt injection | `--session` (real LLM persistence); `session_history.txt` kept as audit-only log, **not** injected into prompt | `session_history.txt` injected into prompt (unchanged) |
+| Model routing | Both use `case "$CURRENT_BACKEND"` with `PLANNING_MODEL`/`ROUTINE_MODEL` | `--agent` flag (agent-per-role) replaces model vars | `PLANNING_MODEL`/`ROUTINE_MODEL` (unchanged) |
+| Execution Plan table | Inline Python `TIER_MAP` in `/plan_feature` auto-load block (both backends) | Agents handle tier routing (but `TIER_MAP` stays — Gemini still uses it) | `TIER_MAP` (unchanged) |
+| Prompt content | Hand-crafted instruction blocks with reply-file instructions | Minimal (session has context, no reply-file instructions) | Full prompt with reply-file instructions (unchanged) |
 
 **Test gate:** After every work order, verify Gemini path still works: `./start.sh stop && backend=gemini ./start.sh start` → send test message → confirm `telegram_reply.txt` response.
 
@@ -119,39 +121,66 @@ Scanned `retro_index.md` tags: `kilo`, `proxy`, `gemini-cli`, `testing`.
 - **Tier:** 🆓 Free
 - **Difficulty:** 2/10
 
-### S-SES-1: Spike — Validate `--session` + `--agent` Together
+### S-SES-1: Spike — Validate `--session` + `--agent` + `--fork` Together
 
-- **Summary:** Verify that `--session` and `--agent` flags work together (agent switch mid-session preserves context).
+- **Summary:** Verify that `--session`, `--agent`, and `--fork` flags work together (agent switch mid-session preserves context; fork creates viable branch session).
 - **File(s):** None (manual test)
 - **Action:** Research
 - **Scope Boundary:** No code changes. Test only.
 - **Dependencies:** WO-SES-0
 - **Parallel:** ❌ No (blocks all subsequent work)
-- **Acceptance:** 3-turn test: (1) start session with agent A, (2) resume with agent B, (3) verify context from turn 1 is available
+- **Acceptance:**
+  - 3-turn test: (1) start session with agent A, (2) resume with agent B, (3) verify context from turn 1 is available
+  - `--agent` + `--model` conflict test: pass both, document which wins
+  - `--fork` test: (1) fill session context, (2) `--fork` → verify new session ID returned with context preserved
 - **Tier:** 🆓 Free
 - **Difficulty:** 2/10
 
 ### WO-SES-1: Refactor `run_agent()` for Session Resume + JSON
 
-- **Summary:** Modify `run_agent()` to accept session ID, use `--session`/`--continue`, output `--format json`, and parse response via jq.
-- **File(s):** `scripts/watcher.sh` (lines ~135-220)
+- **Summary:** Modify `run_agent()` to accept session ID and agent name, use `--session`/`--continue`, output `--format json`, and parse response via jq.
+- **File(s):** `scripts/watcher.sh` — the `run_agent()` function (starts at `run_agent() {`)
 - **Action:** Modify
-- **Signature:** `run_agent(prompt, model, project_dir, [session_id], [agent_name], [extra_flags])` → captures session ID + JSON response
-- **Scope Boundary:** ONLY modify `run_agent()` function. Do NOT touch model routing or workflow detection.
-- **⚠️ Backend Guard:** New params (`session_id`, `agent_name`, `--format json`) apply ONLY inside the `kilo)` case. The `gemini|*)` case must remain unchanged.
+- **Signature:** Use env vars to avoid positional-arg fragility:
+  ```bash
+  # New params passed via env (Kilo-only, ignored by Gemini path):
+  KILO_SESSION_ID="ses_xxx" KILO_AGENT="sop-planner" \
+    run_agent "prompt" "model" "project_dir" [extra_flags...]
+  ```
+- **Return Contract:** `run_agent()` currently exports `AGENT_OUTPUT`, `AGENT_STDERR_CONTENT`, `AGENT_EXIT_CODE`. Add:
+  - `KILO_SESSION_ID_OUT` — session ID extracted from JSON output (for caller to store in `state.json`)
+  - `KILO_RESPONSE_TEXT` — extracted text from JSON events
+  - `KILO_COST` / `KILO_TOKENS` — cost and token usage from `step_finish` event
+- **Scope Boundary:** ONLY modify `run_agent()` function. Do NOT touch model routing or workflow detection. **Also update the dispatch loop caller** (at the `run_agent` call inside the dispatch block) to pass env vars correctly — the positional API must stay backwards-compatible.
+- **⚠️ Backend Guard:** New env vars (`KILO_SESSION_ID`, `KILO_AGENT`, `--format json`) apply ONLY inside the `kilo)` case. The `gemini|*)` case must remain unchanged.
 - **Dependencies:** S-SES-1
 - **Parallel:** ❌ No (core function, all others depend on it)
-- **Acceptance:** `bash -n scripts/watcher.sh` passes; manual test: `run_agent "hello" "" "." "ses_xxx"` resumes session
+- **Acceptance:** `bash -n scripts/watcher.sh` passes; manual test with env vars resumes session
 - **Tier:** ⚡ Mid
 - **Difficulty:** 5/10
 
 ### WO-SES-2: Session Lifecycle in Watcher Main Loop
 
 - **Summary:** Add session creation on `/startup`, session resume on subsequent messages, session close on `/shutdown`. Store session ID in `state.json`.
-- **File(s):** `scripts/watcher.sh` (lines ~340-500, main loop)
+- **File(s):** `scripts/watcher.sh` — main message-handling subshell (starts at `cd "$ACTIVE_PROJECT"`) and dispatch loop (starts at `# DISPATCH EXECUTION`)
 - **Action:** Modify
-- **Scope Boundary:** ONLY modify the main loop session management. Do NOT touch `run_agent()`.
+- **Scope Boundary:** ONLY modify the main loop and dispatch loop session management. Do NOT touch `run_agent()`.
 - **⚠️ Backend Guard:** Session lifecycle (`kiloSessionId`) only activates when `backend=kilo`. Gemini path skips session management entirely.
+- **`state.json` Schema Update:**
+  ```json
+  {
+    "kiloSessionId": "ses_abc123",  // null when no active session
+    "kiloSessionStartedAt": "2026-03-11T21:00:00Z",  // for staleness detection
+    "backend": "kilo",
+    "model": "...",
+    "activeProject": "..."
+  }
+  ```
+- **Session ID Lifecycle:**
+  1. `/startup` → `run_agent()` returns `KILO_SESSION_ID_OUT` → write to `state.json.kiloSessionId`
+  2. Subsequent messages → read `kiloSessionId` from `state.json` → pass via `KILO_SESSION_ID` env var
+  3. `/shutdown` → set `kiloSessionId` to `null` in `state.json`
+  4. Missing/corrupt `state.json` → treat as no session (create new)
 - **Dependencies:** WO-SES-1
 - **Parallel:** ❌ No
 - **Acceptance:** E2E: `/startup` creates session → message resumes → `/shutdown` clears. `jq .kiloSessionId state.json` shows/clears correctly.
@@ -160,11 +189,10 @@ Scanned `retro_index.md` tags: `kilo`, `proxy`, `gemini-cli`, `testing`.
 
 ### WO-SES-3: Agent Routing in Workflow Detection
 
-- **Summary:** Replace manual model routing with `--agent` flag selection based on workflow command, **Kilo path only**.
-- **File(s):** `scripts/watcher.sh` (lines ~275-310, model routing block)
+- **Summary:** Replace the Kilo branch of the existing `case "$CURRENT_BACKEND"` model routing with `--agent` flag selection based on workflow command.
+- **File(s):** `scripts/watcher.sh` — the `case "$CURRENT_BACKEND"` block and `case "$USER_MESSAGES"` routing (in the message-handling section)
 - **Action:** Modify
-- **Scope Boundary:** ONLY modify the Kilo branch of the model routing. Do NOT touch `run_agent()`.
-- **⚠️ Backend Guard:** Gemini's `PLANNING_MODEL`/`ROUTINE_MODEL`/`SELECTED_MODEL` routing must remain intact. Agent routing is Kilo-only.
+- **Scope Boundary:** ONLY modify the Kilo branch of the existing `case "$CURRENT_BACKEND"` routing. Do NOT touch `run_agent()`. The Gemini branch (`gemini|*)`) and its `PLANNING_MODEL`/`ROUTINE_MODEL`/`SELECTED_MODEL` routing must remain intact.
 - **Dependencies:** WO-SES-1, WO-SES-2
 - **Parallel:** ❌ No
 - **Acceptance:** Watcher log shows `--agent sop-planner` for `/plan_feature`, `--agent sop-coordinator` for `/startup`
@@ -174,25 +202,29 @@ Scanned `retro_index.md` tags: `kilo`, `proxy`, `gemini-cli`, `testing`.
 ### WO-SES-4: Edge Case Handlers
 
 - **Summary:** Implement session recovery (expired session → auto-create new), rate limit fallback, and context overflow fork.
-- **File(s):** `scripts/watcher.sh` (inside `run_agent()` return handling, lines ~213-220)
+- **File(s):** `scripts/watcher.sh` — error handling in the caller blocks (after `run_agent` calls in both message loop and dispatch loop)
 - **Action:** Modify
-- **Scope Boundary:** ONLY modify error handling in `run_agent()` and the caller.
+- **Scope Boundary:** ONLY modify error handling after `run_agent()` calls. Add session-aware recovery logic to the existing rate-limit/fallback block.
 - **Dependencies:** WO-SES-1, WO-SES-2
 - **Parallel:** ✅ Yes (with WO-SES-3)
 - **Acceptance:** Simulate expired session (invalid ID) → verify auto-recovery + user notification in outbox
 - **Tier:** ⚡ Mid
 - **Difficulty:** 4/10
 
-### WO-SES-5: Streamline Kilo Prompt Path
+### WO-SES-5: Streamline Kilo Prompt Path (Conditional Branching)
 
-- **Summary:** For Kilo backend only: remove `telegram_reply.txt` instructions and `session_history.txt` references from Kilo prompts (session handles context). Keep `TIER_MAP` (Gemini still uses it). Keep `session_history.txt` as audit log.
-- **File(s):** `scripts/watcher.sh` (lines ~390-450 prompt injection, ~490-500 reply handling)
+- **Summary:** For Kilo backend only: strip `telegram_reply.txt` write-instructions and `session_history.txt` read-instructions from prompts (Kilo session handles context natively). The files themselves remain — Gemini still uses them, and `session_history.txt` is kept as a human-readable audit log (still appended to, just not injected into Kilo prompts).
+- **File(s):** `scripts/watcher.sh` — the prompt-building blocks (workflow prompt starting at `TELEGRAM_PROMPT=` and normal-message prompt) and reply-file reading block (at `REPLY_FILE=`)
 - **Action:** Modify (conditional branching, NOT deletion)
-- **Scope Boundary:** Add `if [ "$CURRENT_BACKEND" = "kilo" ]` guards around prompt sections. Do NOT delete shared mechanisms.
+- **Scope Boundary:** Add `if [ "$CURRENT_BACKEND" = "kilo" ]` guards around prompt sections. Do NOT delete shared mechanisms. Specifically:
+  - Kilo prompt: remove "Conversation history for this session is in: .gemini/session_history.txt" line (session has native context)
+  - Kilo prompt: remove "write a short Telegram-friendly reply to .gemini/telegram_reply.txt" instructions (response comes from JSON output)
+  - Kilo reply: skip `telegram_reply.txt` reading, use `KILO_RESPONSE_TEXT` from `run_agent()` instead
+  - Keep appending to `session_history.txt` for audit (line 368-370) for both backends
 - **⚠️ Backend Guard:** `telegram_reply.txt`, `session_history.txt`, and `TIER_MAP` must ALL remain for Gemini. Only the Kilo prompt path is streamlined.
 - **Dependencies:** WO-SES-1, WO-SES-2, WO-SES-3
 - **Parallel:** ❌ No (touches same file)
-- **Acceptance:** Kilo path: no `telegram_reply.txt` in prompt. Gemini path: `telegram_reply.txt` still in prompt. `bash -n watcher.sh` passes.
+- **Acceptance:** Kilo path: no `telegram_reply.txt` in prompt, no `session_history.txt` in prompt. Gemini path: both still in prompt. `bash -n watcher.sh` passes.
 - **Tier:** ⚡ Mid
 - **Difficulty:** 4/10
 
@@ -240,7 +272,7 @@ WO-SES-0 (agent configs) ──→ S-SES-1 (spike: --session + --agent)
                               │             │
                               └──────┬──────┘
                                      ▼
-                              WO-SES-5 (remove legacy)
+                               WO-SES-5 (streamline prompts)
                                      │
                               ┌──────┴──────┐
                               ▼             ▼
@@ -255,12 +287,12 @@ WO-SES-0 (agent configs) ──→ S-SES-1 (spike: --session + --agent)
 | # | Task | Summary | Diff | Tier | ∥? | Deps |
 |---|---|---|---|---|---|---|
 | 0 | WO-SES-0 Agent config sync | Update 4 Kilo agents to anthropic models | 2/10 | 🆓 Free | ✅ | — |
-| 1 | S-SES-1 Session+Agent spike | Validate --session + --agent work together | 2/10 | 🆓 Free | ❌ | 0 |
-| 2 | WO-SES-1 Refactor run_agent | Add session ID, JSON output, agent flag | 5/10 | ⚡ Mid | ❌ | 1 |
-| 3 | WO-SES-2 Session lifecycle | /startup creates, messages resume, /shutdown closes | 4/10 | ⚡ Mid | ❌ | 2 |
-| 4 | WO-SES-3 Agent routing | Replace model routing with --agent flag | 3/10 | ⚡ Mid | ✅ | 2,3 |
-| 5 | WO-SES-4 Edge case handlers | Session recovery, rate limit, fork | 4/10 | ⚡ Mid | ✅ | 2,3 |
-| 6 | WO-SES-5 Remove legacy | Delete telegram_reply, TIER_MAP, text scraping | 3/10 | ⚡ Mid | ❌ | 4,5 |
+| 1 | S-SES-1 Session+Agent+Fork spike | Validate --session + --agent + --fork work together | 2/10 | 🆓 Free | ❌ | 0 |
+| 2 | WO-SES-1 Refactor run_agent | Add session ID (env var), JSON output, agent flag, return contract | 5/10 | ⚡ Mid | ❌ | 1 |
+| 3 | WO-SES-2 Session lifecycle | /startup creates, messages resume, /shutdown closes, state.json schema | 4/10 | ⚡ Mid | ❌ | 2 |
+| 4 | WO-SES-3 Agent routing | Replace Kilo branch of model routing with --agent flag | 3/10 | ⚡ Mid | ✅ | 3 |
+| 5 | WO-SES-4 Edge case handlers | Session recovery, rate limit, fork | 4/10 | ⚡ Mid | ✅ | 3 |
+| 6 | WO-SES-5 Streamline prompts | Conditional branching: strip reply-file + history from Kilo prompts | 3/10 | ⚡ Mid | ❌ | 4,5 |
 | 7 | WO-SES-6 Update tests | New session-persistence test block | 3/10 | ⚡ Mid | ✅ | 6 |
 | 8 | WO-SES-7 Docs update | P-008 in systemPatterns, guide update | 1/10 | 🆓 Free | ✅ | 6 |
 
@@ -276,14 +308,14 @@ WO-SES-0 (agent configs) ──→ S-SES-1 (spike: --session + --agent)
 | WO-SES-2 | watcher.sh (main loop) | 4/10 | ⚡ Mid | ❌ |
 | WO-SES-3 | watcher.sh (routing) | 3/10 | ⚡ Mid | ✅ |
 | WO-SES-4 | watcher.sh (error handling) | 4/10 | ⚡ Mid | ✅ |
-| WO-SES-5 | watcher.sh (cleanup) | 3/10 | ⚡ Mid | ❌ |
+| WO-SES-5 | watcher.sh (prompt branching) | 3/10 | ⚡ Mid | ❌ |
 | WO-SES-6 | bot_test_v3.js | 3/10 | ⚡ Mid | ✅ |
 | WO-SES-7 | docs | 1/10 | 🆓 Free | ✅ |
 
-**Overall Score**: (2+2+5+4+3+4+3+3+1) / 9 = 3.0 + 2 (cross-layer + new pattern) = **5.0/10 (Moderate)**
+**Overall Score**: (2+2+5+4+3+4+3+3+1) / 9 = 3.0 + 3 (risk modifiers) = **6.0/10 (Moderate)**
 
 ### Risk Factors
--  [ ] Touches test infrastructure → +1
+- [x] Touches test infrastructure → +1
 - [x] Cross-layer (watcher + bot + agent configs) → +1
 - [x] New architectural pattern (session persistence) → +1
 
@@ -312,18 +344,19 @@ New test block (`session-persistence`):
 
 ### Regression
 
-- [ ] All existing 151 tests pass after changes
+- [ ] All existing 156 tests pass after changes
 - [ ] `/ping` still works (stateless, no session needed)
 - [ ] `/model` command still changes model for regular messages
 - [ ] Project switch preserves bot state
+- [ ] Dispatch loop tasks execute correctly with session-aware `run_agent()`
 
 ### Gemini Backend Regression (Critical)
 
 - [ ] Switch to Gemini backend → send message → `telegram_reply.txt` generated
-- [ ] Gemini `/startup` → `session_history.txt` written and referenced
+- [ ] Gemini `/startup` → `session_history.txt` written and referenced in prompt
 - [ ] Gemini `/plan_feature` → TIER_MAP generates execution plan table
 - [ ] Gemini model routing uses `PLANNING_MODEL`/`ROUTINE_MODEL` (not agents)
-- [ ] Gemini prompt still contains full SOP injection + reply file instructions
+- [ ] Gemini prompt still contains reply-file instructions + session_history reference
 
 ---
 
@@ -340,9 +373,27 @@ New test block (`session-persistence`):
 
 ## Decisions
 
-1. **Keep `session_history.txt`** as human-readable audit log (agent doesn't need it).
+1. **Keep `session_history.txt`** as human-readable audit log (still appended to, but not injected into Kilo prompts).
 2. **Same session for `/plan_feature`** — planning benefits from startup context. Use `--fork` if context overflows.
 3. **Agent-per-tier-model** — use existing SOP agents from `workstation_sop.md §6`.
+4. **Env vars for new params** — `KILO_SESSION_ID` and `KILO_AGENT` passed via env, not positional args, to maintain backwards-compatible `run_agent()` signature.
+5. **Dispatch loop in scope** — both the main message loop and the dispatch execution loop call `run_agent()` and must be updated for session awareness.
+
+---
+
+## Rollback Strategy
+
+If session persistence causes instability in production:
+
+1. **Immediate**: Set `KILO_SESSION_ENABLED=false` in `.env` → watcher falls back to stateless `kilo run --auto` (current behavior)
+2. **Implementation**: Add a guard at the top of session logic:
+   ```bash
+   KILO_SESSION_ENABLED=$(grep -s 'KILO_SESSION_ENABLED' "$ENV_FILE" | cut -d'=' -f2)
+   if [ "${KILO_SESSION_ENABLED:-true}" = "false" ]; then
+       # Skip session management, use stateless invocation
+   fi
+   ```
+3. **No data loss**: `session_history.txt` is still written regardless, so audit trail is preserved
 
 ---
 
@@ -351,7 +402,7 @@ New test block (`session-persistence`):
 - [x] Spec document created
 - [x] All tasks added as work orders with full format
 - [x] Difficulty ratings and tier recommendations assigned
-- [x] Overall difficulty calculated with risk modifiers (5.0/10)
+- [x] Overall difficulty calculated with risk modifiers (6.0/10)
 - [x] Dependency graph produced
 - [x] Execution Plan Summary table generated
 - [ ] User approved the Execution Plan (approval gate)
@@ -360,3 +411,6 @@ New test block (`session-persistence`):
 - [x] Jules-eligible tasks identified (WO-SES-0, WO-SES-7)
 - [x] Relevant retrospectives reviewed (2 matched: kilo proxy, kilo backend)
 - [x] Gemini backend compatibility reviewed — backend guards on all work orders
+- [x] Dispatch loop included in scope (WO-SES-1, WO-SES-2)
+- [x] Rollback strategy documented
+- [x] Cost implications of Opus models flagged

@@ -1023,8 +1023,8 @@ await test('[regression] watcher sources .env for API keys', () => {
 
 await test('[regression] registries.js PLATFORM_MODELS includes kilo models', () => {
     ok(PLATFORM_MODELS.kilo.length >= 2);
-    ok(PLATFORM_MODELS.kilo.some(m => m.id.includes('claude-opus')));
-    ok(PLATFORM_MODELS.kilo.some(m => m.id.includes('claude-sonnet')));
+    ok(PLATFORM_MODELS.kilo.some(m => m.id.includes('glm-5')));
+    ok(PLATFORM_MODELS.kilo.some(m => m.id.includes('minimax')));
 });
 
 await test('[regression] registries.js has /backend command data', () => {
@@ -1035,7 +1035,7 @@ await test('[regression] registries.js has /backend command data', () => {
 await test('[regression] backend switch resets model to backend default', () => {
     const kiloModels = PLATFORM_MODELS['kilo'] || [];
     const defaultModel = kiloModels.length > 0 ? kiloModels[0].id : null;
-    ok(defaultModel.includes('anthropic/'), `kilo default should be anthropic, got ${defaultModel}`);
+    ok(defaultModel.includes('openrouter/'), `kilo default should be openrouter, got ${defaultModel}`);
     const geminiModels = PLATFORM_MODELS['gemini'] || [];
     strictEqual(geminiModels[0].id, 'gemini-2.5-flash');
 });
@@ -1043,7 +1043,7 @@ await test('[regression] backend switch resets model to backend default', () => 
 await test('[regression] /model shows backend-specific models', () => {
     const models = PLATFORM_MODELS['kilo'] || [];
     ok(models.length >= 2, `kilo should have at least 2 models, got ${models.length}`);
-    ok(models.every(m => m.id.startsWith('anthropic/')), 'all kilo models should be anthropic');
+    ok(models.every(m => m.id.startsWith('openrouter/')), 'all kilo models should be openrouter');
 });
 
 await test('[regression] start.sh accepts kilo as alternative backend', () => {
@@ -1132,7 +1132,7 @@ await test('[e2e] TIER_DEFAULTS is backend-specific in registries.js', () => {
     ok(TIER_DEFAULTS.gemini.top);
     ok(TIER_DEFAULTS.kilo.top);
     ok(TIER_DEFAULTS.gemini.top.model.includes('gemini'));
-    ok(TIER_DEFAULTS.kilo.top.model.includes('anthropic'), `kilo top should be anthropic, got ${TIER_DEFAULTS.kilo.top.model}`);
+    ok(TIER_DEFAULTS.kilo.top.model.includes('openrouter'), `kilo top should be openrouter, got ${TIER_DEFAULTS.kilo.top.model}`);
 });
 
 await test('[e2e] health check uses CENTRAL_DIR not DOT_GEMINI', () => {
@@ -1271,7 +1271,7 @@ await test('[behavioral] auto-load assigns kilo models when backend=kilo', () =>
     const tasks = JSON.parse(result);
     ok(tasks.length >= 1);
     strictEqual(tasks[0].platform, 'kilo');
-    ok(tasks[0].model.includes('anthropic/'), `kilo auto-load should assign anthropic models, got ${tasks[0].model}`);
+    ok(tasks[0].model.includes('openrouter/'), `kilo auto-load should assign openrouter models, got ${tasks[0].model}`);
     rmSync(mockDir, { recursive: true, force: true });
 });
 
@@ -1315,25 +1315,92 @@ await test('[behavioral] auto-load defaults to gemini when backend not set', () 
 // ---- Kilo Backend E2E Fixes (Bug 1-5) ----
 console.log('\n── Regression: Kilo Backend E2E Fixes ──');
 
-await test('[regression] TIER_DEFAULTS.kilo.top uses Claude model', () => {
-    ok(TIER_DEFAULTS.kilo.top.model.includes('claude'), `kilo top tier should be Claude, got ${TIER_DEFAULTS.kilo.top.model}`);
+await test('[regression] TIER_DEFAULTS.kilo.top uses non-Anthropic model', () => {
+    ok(TIER_DEFAULTS.kilo.top.model.includes('openrouter'), `kilo top tier should be openrouter, got ${TIER_DEFAULTS.kilo.top.model}`);
 });
 
-await test('[regression] PLATFORM_MODELS.kilo includes Claude models', () => {
+await test('[regression] PLATFORM_MODELS.kilo includes non-Anthropic models', () => {
     const kilo = PLATFORM_MODELS.kilo;
-    ok(kilo.some(m => m.id.includes('claude-sonnet')), 'should have Claude Sonnet');
-    ok(kilo.some(m => m.id.includes('claude-opus')), 'should have Claude Opus');
+    ok(kilo.some(m => m.id.includes('glm-5')), 'should have GLM-5');
+    ok(kilo.some(m => m.id.includes('minimax')), 'should have MiniMax');
 });
 
-await test('[regression] watcher normalizes 3-part model IDs for Kilo', () => {
-    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
-    ok(w.includes('slash_count'), 'watcher should count slashes for model normalization');
-});
 
 await test('[regression] watcher has backend-aware routine models', () => {
     const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
     ok(w.includes('CURRENT_BACKEND=$(get_backend)'), 'should read backend before setting routine models');
-    ok(w.includes('ROUTINE_MODEL="anthropic/claude-sonnet-4-6"'), 'kilo routine should use Claude Sonnet');
+    ok(w.includes('ROUTINE_MODEL="openrouter/minimax/minimax-m2.5"'), 'kilo routine should use MiniMax M2.5');
+});
+
+// ---- Session-Persistent Kilo (WO-SES-1 through WO-SES-5) ----
+console.log('\n── Contract: Session-Persistent Kilo ──');
+
+await test('[session] watcher.sh defines KILO_SESSION_ID env var contract', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('KILO_SESSION_ID'), 'should reference KILO_SESSION_ID');
+    ok(w.includes('KILO_AGENT'), 'should reference KILO_AGENT');
+    ok(w.includes('KILO_SESSION_ID_OUT'), 'should reference KILO_SESSION_ID_OUT');
+    ok(w.includes('KILO_RESPONSE_TEXT'), 'should reference KILO_RESPONSE_TEXT');
+    ok(w.includes('KILO_COST'), 'should reference KILO_COST');
+    ok(w.includes('KILO_TOKENS'), 'should reference KILO_TOKENS');
+});
+
+await test('[session] watcher.sh uses --session flag for resume', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('"--session" "$KILO_SESSION_ID"'), 'should pass --session with session ID');
+});
+
+await test('[session] watcher.sh uses --agent flag for SOP routing', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('"--agent" "$KILO_AGENT"'), 'should pass --agent with agent name');
+});
+
+await test('[session] watcher.sh uses --format json for session mode', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('"--format" "json"'), 'should pass --format json');
+});
+
+await test('[session] watcher.sh has agent-per-role routing', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('sop-coordinator'), 'should route to sop-coordinator');
+    ok(w.includes('sop-planner'), 'should route to sop-planner');
+    ok(w.includes('sop-developer'), 'should route to sop-developer');
+    ok(w.includes('sop-auditor'), 'should route to sop-auditor');
+});
+
+await test('[session] watcher.sh stores kiloSessionId in state.json', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('.kiloSessionId'), 'should read/write kiloSessionId in state.json');
+    ok(w.includes('.kiloSessionStartedAt'), 'should read/write kiloSessionStartedAt in state.json');
+});
+
+await test('[session] watcher.sh clears session on /startup and /shutdown', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('Kilo session cleared for fresh start'), 'should clear on /startup');
+    ok(w.includes('Kilo session cleared on shutdown'), 'should clear on /shutdown');
+});
+
+await test('[session] watcher.sh has session recovery for expired sessions', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('Session expired or invalid'), 'should detect expired sessions');
+    ok(w.includes('SESSION_RECOVERED'), 'should have recovery flag');
+});
+
+await test('[session] watcher.sh parses JSON output from Kilo', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    ok(w.includes('select(.type == "text")'), 'should parse text events');
+    ok(w.includes('select(.type == "step_finish")'), 'should parse step_finish events');
+    ok(w.includes('.part.text'), 'should extract text from JSON');
+    ok(w.includes('.part.cost'), 'should extract cost from JSON');
+    ok(w.includes('.part.tokens.total'), 'should extract token count from JSON');
+});
+
+await test('[session] watcher.sh strips reply-file instructions for Kilo session mode', () => {
+    const w = readFileSync(resolve(PROJECT_ROOT, 'scripts', 'watcher.sh'), 'utf8');
+    // Kilo session mode should NOT send telegram_reply.txt instructions
+    ok(w.includes('CURRENT_BACKEND" != "kilo"'), 'should conditionally skip reply file instructions for Kilo');
+    // Session history instructions should also be conditional
+    ok(w.includes('session_history.txt'), 'should still have session_history reference (for Gemini)');
 });
 
 // ============================================================================
